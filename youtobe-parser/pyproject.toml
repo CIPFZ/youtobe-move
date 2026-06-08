@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "youtobe-parser"
+version = "1.0.0"
+description = "Pure Python high-speed media pipeline: download, transcribe, translate, compose"
+requires-python = ">=3.10"
+dependencies = [
+    "certifi>=2024.0.0",
+    "yt-dlp>=2024.0.0",
+    "openai>=1.51.0",
+    "faster-whisper>=1.1.0",
+    "demucs>=4.0.0",
+    "edge-tts>=6.1.0",
+    "imageio-ffmpeg>=0.5.1",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "modelscope>=1.17.1",
+    "socksio>=1.0.0",
+]
+
+[project.scripts]
+yp-run = "main:main"
+yp-dub = "dub_main:main"
+yp-discover = "daily_discovery:main"
+yp-discovery-ui = "discovery_dashboard:main"
+yp-scheduler = "app.scheduler:run_scheduler"
+yp-server = "app.scheduler:run_server"
+
+[tool.setuptools.packages.find]
+include = ["app", "app.*"]
