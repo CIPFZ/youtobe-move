@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 from app.discovery.models import VideoCandidate
@@ -66,39 +65,8 @@ def discovery_keywords() -> list[tuple[str, str, list[str]]]:
     return merged
 
 
-def _load_api_key_runtime() -> str:
-    # 1) runtime env has highest priority
-    env_key = os.getenv('YOUTUBE_API_KEY', '').strip()
-    if env_key:
-        return env_key
-
-    # 2) value loaded at startup via pydantic settings
-    cfg_key = settings.youtube_api_key.strip()
-    if cfg_key:
-        return cfg_key
-
-    # 3) fallback: read .env
-    env_file = Path('.env')
-    if not env_file.exists():
-        return ''
-    try:
-        for ln in env_file.read_text(encoding='utf-8').splitlines():
-            line = ln.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            k, v = line.split('=', 1)
-            if k.strip() == 'YOUTUBE_API_KEY':
-                return v.strip().strip('"').strip("'")
-    except Exception:
-        return ''
-    return ''
-
 
 def run_discovery_once(*, top_n: int = 0, days_back: int = 0) -> tuple[list[VideoCandidate], list[VideoCandidate]]:
-    api_key = _load_api_key_runtime()
-    if not api_key:
-        raise RuntimeError('YOUTUBE_API_KEY is required for daily discovery')
-
     kw_triples = discovery_keywords()
     if not kw_triples:
         raise RuntimeError('DISCOVERY_TOPIC_TYPES or keywords is empty')
@@ -106,7 +74,6 @@ def run_discovery_once(*, top_n: int = 0, days_back: int = 0) -> tuple[list[Vide
     top = top_n if top_n > 0 else settings.discovery_top_n
     days = days_back if days_back > 0 else settings.discovery_days_back
 
-    # build lookup: keyword -> (category, allowed_languages)
     kw_meta: dict[str, tuple[str, list[str]]] = {}
     for kw, cat, langs in kw_triples:
         kw_meta[kw.strip().lower()] = (cat, langs)
@@ -114,7 +81,7 @@ def run_discovery_once(*, top_n: int = 0, days_back: int = 0) -> tuple[list[Vide
     keywords = [kw for kw, _, _ in kw_triples]
 
     raw = discover_candidates(
-        api_key=api_key,
+        api_key='',  # unused — yt-dlp search doesn't need API key
         keywords=keywords,
         days_back=days,
         max_results_per_keyword=settings.discovery_max_results_per_keyword,

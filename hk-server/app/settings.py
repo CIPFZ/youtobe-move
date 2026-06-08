@@ -24,9 +24,8 @@ class Settings(BaseSettings):
     log_level: str = Field(default='INFO')
     log_file: Path = Field(default=Path('runtime/logs/hk-server.log'))
 
-    # ── discovery (daily candidate collection) ──
+    # ── discovery (daily candidate collection via yt-dlp) ──
     discovery_enabled: bool = Field(default=True)
-    youtube_api_key: str = Field(default='')
     discovery_topic_types: str = Field(default='pets,beauty,funny')
 
     # per-topic keywords
