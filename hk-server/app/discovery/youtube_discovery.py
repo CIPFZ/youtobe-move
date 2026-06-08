@@ -136,6 +136,8 @@ def discover_candidates(
             ids = _search_video_ids(api_key, kw, published_after, max_results_per_keyword)
             if not ids:
                 continue
+            # small delay between API calls to avoid 429 rate limiting
+            time.sleep(2)
             details = _videos_details(api_key, ids)
             for item in details:
                 vid = (item.get('id') or '').strip()
@@ -188,5 +190,7 @@ def discover_candidates(
         except Exception as exc:
             logger.warning('Discovery keyword failed. keyword=%s err=%s', kw, exc)
             continue
+        # rate-limit: pause between keywords to avoid 429
+        time.sleep(3)
     logger.info('Discovery completed. candidates=%d', len(out))
     return out
