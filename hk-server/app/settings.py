@@ -14,12 +14,11 @@ class Settings(BaseSettings):
     output_name: str = Field(default='final_output')
     metadata_dirname: str = Field(default='metadata')
 
-    # yt-dlp
+    # yt-dlp (single-stream: YouTube serves 1080p mp4 with audio pre-muxed)
     cookie_file: str = Field(default='')
     ytdlp_proxy: str = Field(default='')
     playlist_strategy: str = Field(default='first')
-    ytdlp_video_format: str = Field(default='bestvideo[ext=mp4][vcodec^=avc1]/bestvideo[ext=mp4]/bestvideo')
-    ytdlp_audio_format: str = Field(default='bestaudio[ext=m4a]/bestaudio')
+    ytdlp_format: str = Field(default='best[ext=mp4]')
 
     # logging
     log_level: str = Field(default='INFO')

@@ -193,11 +193,6 @@ class _ApiHandler(BaseHTTPRequestHandler):
             if candidate:
                 _stream_file(self, candidate[0], 'video/mp4')
                 return
-        elif file_type == 'audio':
-            candidate = sorted(disk_path.glob('*.m4a'))
-            if candidate:
-                _stream_file(self, candidate[0], 'audio/mp4')
-                return
         elif file_type == 'thumbnail':
             candidate = sorted(disk_path.glob('*.thumbnail.*'))
             if candidate:
