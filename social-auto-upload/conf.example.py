@@ -6,9 +6,10 @@ LOCAL_CHROME_PATH = ""  # optional, e.g. C:/Program Files/Google/Chrome/Applicat
 LOCAL_CHROME_HEADLESS = True  # default headless behavior for uploader/examples
 DEBUG_MODE = True  # default debug behavior
 
-# ── HK server (youtobe-parser) pull configuration ──
-HK_SERVER_URL = "http://192.168.1.5:8503"   # HK youtobe-parser API address
-HK_API_TOKEN = ""                             # Bearer token; empty = no auth
-HK_POLL_INTERVAL_MINUTES = 30                 # background poll interval
-HK_AUTO_DOWNLOAD = True                       # automatically download new videos
-HK_DOWNLOAD_DIRNAME = "hk"                    # subdirectory under videoFile/
+# ── HK server pull configuration ──
+HK_SERVER_URL = "http://103.118.198.49:8503"  # HK hk-server API address
+HK_API_TOKEN = ""                               # Bearer token; empty = no auth
+HK_POLL_INTERVAL_MINUTES = 30                   # background poll interval
+HK_AUTO_DOWNLOAD = True                         # automatically download new videos
+HK_DOWNLOAD_DIRNAME = "hk"                      # subdirectory under videoFile/
+HK_DOWNLOAD_INTERVAL_SEC = 180                  # seconds between each download
