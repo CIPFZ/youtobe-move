@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from pathlib import Path
@@ -211,6 +212,10 @@ def download_media(
     )
     metadata['best_thumbnail'] = thumbnail_meta
     metadata['thumbnail_path'] = str(thumbnail_path) if thumbnail_path else ''
+
+    # save full metadata as JSON alongside the video
+    meta_path = out_dir / f'{video_id}.video_info.json'
+    meta_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding='utf-8')
 
     logger.info('yt-dlp completed. id=%s title=%s video=%s thumbnail=%s',
                 metadata.get('id'), metadata.get('title'), video_path, thumbnail_path or 'none')
