@@ -9,16 +9,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
-    work_dir: Path = Field(default=Path('runtime'))
-    source_url: str = Field(default='')
-    output_name: str = Field(default='final_output')
-    metadata_dirname: str = Field(default='metadata')
-
-    # yt-dlp (single-stream: YouTube serves 1080p mp4 with audio pre-muxed)
+    # yt-dlp (dual-stream: bestvideo + bestaudio, merged locally)
     cookie_file: str = Field(default='')
     ytdlp_proxy: str = Field(default='')
     playlist_strategy: str = Field(default='first')
-    ytdlp_format: str = Field(default='best[ext=mp4]')
+    ytdlp_video_format: str = Field(default='bestvideo[ext=mp4]')
+    ytdlp_audio_format: str = Field(default='bestaudio[ext=m4a]')
 
     # logging
     log_level: str = Field(default='INFO')
@@ -54,8 +50,6 @@ class Settings(BaseSettings):
     discovery_min_comments: int = Field(default=0)  # yt-dlp flat search cannot provide comment_count
     discovery_min_duration_sec: int = Field(default=60)
     discovery_max_duration_sec: int = Field(default=1800)
-    discovery_http_retries: int = Field(default=3)
-    discovery_http_retry_backoff_sec: float = Field(default=1.2)
     discovery_db_path: Path = Field(default=Path('runtime/discovery/discovery.db'))
     discovery_interval_minutes: int = Field(default=1440)
 

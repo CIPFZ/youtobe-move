@@ -2,6 +2,20 @@
 
 香港服务器端，定时从 YouTube 发现指定分类的热门视频并下载，提供 HTTP API 供本地拉取。
 
+## 架构
+
+```
+hk-server (常驻进程 :8503)
+├── 后台定时器 — 周期执行发现 + 下载
+├── GET  /api/videos        — 视频列表（状态/分页）
+├── GET  /api/videos/<id>   — 视频详情
+├── GET  /api/videos/<id>/meta  — 完整元信息 JSON
+├── GET  /api/videos/<id>/file?type=video|audio|thumbnail — 流式下载
+├── DELETE /api/videos/<id> — 确认拉取，服务器删除
+├── GET  /api/stats         — 存储统计
+└── POST /api/trigger-discovery — 手动触发
+```
+
 ## 依赖
 
 ```
@@ -16,110 +30,73 @@ socksio>=1.0.0     # 可选: socks5 代理
 
 ```bash
 cd hk-server
-
-# 1. 配置
-cp .env.example .env
-# 编辑 .env 填入你的 YOUTUBE_API_KEY
-
-# 2. 安装
+cp .env.example .env   # 编辑填入配置
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .
-
-# 3. 运行
-hk-scheduler            # 单次执行: 发现 → 下载 → 清理
-hk-server               # 长期运行: HTTP API + 定时发现
+hk-server              # 启动常驻服务
 ```
 
 ## 运行模式
 
-### hk-scheduler (单次)
+### hk-server (常驻) — 推荐
 
-执行一次完整的发现+下载+清理循环后退出。适合 crontab 定时调度:
-
-```
-# crontab: 每天凌晨 3:00 执行
-0 3 * * * cd /path/to/hk-server && hk-scheduler >> runtime/logs/cron.log 2>&1
-```
-
-### hk-server (常驻)
-
-启动 HTTP API 服务 + 后台定时发现轮询。发现间隔由 `DISCOVERY_INTERVAL_MINUTES` 控制（默认 1440 分钟 = 每天一次）:
+HTTP API + 后台定时发现。发现周期由 `DISCOVERY_INTERVAL_MINUTES` 控制。
 
 ```bash
 hk-server
-# 输出: API server listening on http://0.0.0.0:8503
+# API server listening on http://0.0.0.0:8503
+# Discovery timer started (interval=1440 min)
 ```
 
-## HTTP API
+### hk-scheduler (单次)
+
+执行一次完整流程后退出，适合 crontab。
+
+## API
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/videos?download_status=downloaded` | 待拉取视频列表 |
+| GET | `/api/videos?download_status=downloaded` | 待拉取列表 |
 | GET | `/api/videos/<id>` | 视频详情 |
-| GET | `/api/videos/<id>/file?type=video` | 下载视频文件 |
-| GET | `/api/videos/<id>/file?type=thumbnail` | 下载封面 |
-| DELETE | `/api/videos/<id>` | 确认拉取完成，服务器删除 |
+| GET | `/api/videos/<id>/meta` | 完整 .video_info.json |
+| GET | `/api/videos/<id>/file?type=video` | 下载视频流(.mp4) |
+| GET | `/api/videos/<id>/file?type=audio` | 下载音频流(.m4a) |
+| GET | `/api/videos/<id>/file?type=thumbnail` | 下载封面图 |
+| DELETE | `/api/videos/<id>` | 确认拉取，删除服务器文件 |
 | GET | `/api/stats` | 存储统计 |
-| POST | `/api/trigger-discovery` | 手动触发发现 |
+| POST | `/api/trigger-discovery` | 手动触发 |
 
-## 配置说明
+## 配置
 
-关键配置项（`.env`）:
+核心配置项（`.env`）：
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `DISCOVERY_TOPIC_TYPES` | pets,beauty,funny | 分类列表 |
-| `DISCOVERY_TOP_N` | 5 | 每天选取 Top N |
-| `DISCOVERY_DAYS_BACK` | 7 | 搜索近 N 天视频 |
-| `DISCOVERY_DOWNLOAD_MIN_SCORE` | 5.0 | 最低下载分数 |
-| `DISK_MAX_STORAGE_GB` | 50 | 最大存储容量 |
-| `DISK_MAX_RETENTION_DAYS` | 7 | 最大保留天数 |
-| `API_PORT` | 8503 | HTTP 监听端口 |
-
-## 文件结构
-
-```
-hk-server/
-├── app/
-│   ├── discovery/           # YouTube 发现模块
-│   │   ├── models.py        # VideoCandidate 数据模型
-│   │   ├── scoring.py       # 热度评分、语言过滤、去重
-│   │   ├── youtube_discovery.py  # YouTube Data API v3 搜索
-│   │   ├── repository.py    # SQLite 数据库操作
-│   │   └── service.py       # 发现主流程 + 关键词注册
-│   ├── downloader.py        # yt-dlp 下载模块
-│   ├── download_service.py  # 发现→下载→清理 编排
-│   ├── disk_cleaner.py      # 滚动删除管理
-│   ├── api.py              # HTTP API 服务
-│   ├── scheduler.py         # 调度入口
-│   ├── settings.py          # 配置管理
-│   ├── logging_utils.py     # 日志工具
-│   └── _ssl_patch.py        # SSL CA 补丁
-├── .env.example             # 配置模板
-├── pyproject.toml           # 项目元信息
-└── README.md
-```
+| YTDLP_PROXY | (空) | socks5 代理 |
+| YTDLP_VIDEO_FORMAT | bestvideo[ext=mp4] | 视频格式 |
+| YTDLP_AUDIO_FORMAT | bestaudio[ext=m4a] | 音频格式 |
+| DISCOVERY_TOPIC_TYPES | pets,beauty,funny | 分类 |
+| DISCOVERY_TOP_N | 5 | 每日选取数 |
+| DISCOVERY_INTERVAL_MINUTES | 1440 | 发现周期 |
+| DISK_MAX_STORAGE_GB | 50 | 存储上限 |
+| DISK_MAX_RETENTION_DAYS | 7 | 保留天数 |
+| DOWNLOAD_INTERVAL_SEC | 180 | 下载间隔 |
+| API_PORT | 8503 | 端口 |
 
 ## 数据流
 
 ```
-hk-scheduler / crontab
-    │
-    ├── YouTube Data API v3
-    │   ├── 按分类关键词搜索
-    │   ├── 评分 + 过滤 + 去重
-    │   └── Top 5 VideoCandidate
-    │
-    ├── SQLite (discovery.db)
-    │   └── upsert_candidates(video_id 主键去重)
-    │
-    ├── yt-dlp 下载
-    │   └── runtime/downloads/<category>/<video_id>/
-    │
-    ├── cleanup_if_needed()
-    │   └── 超出 50GB 或 7 天 → 删除最旧
-    │
-    └── HTTP API :8503
-        ├── GET  /api/videos          → 本地拉取
-        ├── GET  /api/videos/<id>/file → 下载文件
-        └── DELETE /api/videos/<id>    → 确认删除
+YouTube → ytsearchN → 评分→TopN → SQLite → yt-dlp 双流下载
+                                              │
+                                     runtime/downloads/<cat>/<id>/
+                                     ├── <id>.mp4     视频流
+                                     ├── <id>.m4a     音频流
+                                     ├── <id>.video_info.json  元信息
+                                     └── <id>.thumbnail.jpg    封面
+```
+
+本地拉取后用 ffmpeg 合并:
+```bash
+ffmpeg -i video.mp4 -i audio.m4a -c copy merged.mp4
 ```

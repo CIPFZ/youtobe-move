@@ -94,8 +94,12 @@ class _ApiHandler(BaseHTTPRequestHandler):
             if not video_id or video_id == 'file':
                 _error_response(self, 'Invalid video_id', status=400)
                 return
+            # check for /meta sub-path
+            if len(parts) >= 5 and parts[3] == 'meta':
+                self._handle_get_meta(video_id)
+                return
             # check for /file sub-path
-            parts = [p for p in path.split('/') if p]
+
             if len(parts) >= 5 and parts[3] == 'file':
                 file_type = qs.get('type', ['video'])[0].lower()
                 self._handle_get_file(video_id, file_type)
@@ -193,6 +197,11 @@ class _ApiHandler(BaseHTTPRequestHandler):
             if candidate:
                 _stream_file(self, candidate[0], 'video/mp4')
                 return
+        elif file_type == 'audio':
+            candidate = sorted(disk_path.glob('*.m4a'))
+            if candidate:
+                _stream_file(self, candidate[0], 'audio/mp4')
+                return
         elif file_type == 'thumbnail':
             candidate = sorted(disk_path.glob('*.thumbnail.*'))
             if candidate:
@@ -203,6 +212,36 @@ class _ApiHandler(BaseHTTPRequestHandler):
                 return
 
         _error_response(self, f'No {file_type} file found for this video', status=404)
+
+    def _handle_get_meta(self, video_id: str) -> None:
+        db_path = settings.discovery_db_path.resolve()
+        v = get_video_by_id(db_path, video_id)
+        if v is None:
+            _error_response(self, 'Video not found', status=404)
+            return
+
+        file_path_str = v.get('file_path', '') or ''
+        if not file_path_str:
+            _error_response(self, 'Video not downloaded yet', status=404)
+            return
+
+        disk_path = Path(file_path_str)
+        if not disk_path.is_dir():
+            _error_response(self, 'Download directory missing', status=404)
+            return
+
+        json_files = sorted(disk_path.glob('*.video_info.json'))
+        if not json_files:
+            _error_response(self, 'Metadata JSON not found for this video', status=404)
+            return
+
+        try:
+            data = json.loads(json_files[0].read_text(encoding='utf-8'))
+        except Exception as exc:
+            _error_response(self, f'Failed to read metadata: {exc}', status=500)
+            return
+
+        _json_response(self, data)
 
     def _handle_delete_video(self, video_id: str) -> None:
         db_path = settings.discovery_db_path.resolve()

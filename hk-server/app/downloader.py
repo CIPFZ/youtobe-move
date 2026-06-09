@@ -82,6 +82,66 @@ def _build_video_metadata(info: dict[str, Any], source_url: str, normalized_url:
     }
 
 
+def _stream_candidates(stream_kind: str) -> list[str]:
+    primary = settings.ytdlp_video_format if stream_kind == 'video' else settings.ytdlp_audio_format
+    if stream_kind == 'video':
+        fallback = ['bestvideo[ext=mp4]']
+    else:
+        fallback = ['bestaudio[ext=m4a]']
+    candidates: list[str] = []
+    for sel in [primary, *fallback]:
+        if sel and sel not in candidates:
+            candidates.append(sel)
+    return candidates
+
+
+def _download_stream(normalized_url: str, out_dir: Path, stream_kind: str, cookie_file: str, proxy_url: str) -> tuple[dict[str, Any], Path]:
+    last_exc: Exception | None = None
+    info: dict[str, Any] | None = None
+
+    for selector in _stream_candidates(stream_kind):
+        opts: dict[str, Any] = {
+            'quiet': False,
+            'noplaylist': True,
+            'outtmpl': str(out_dir / '%(id)s.%(ext)s'),
+            'format': selector,
+        }
+        if cookie_file:
+            opts['cookiefile'] = cookie_file
+        if proxy_url:
+            opts['proxy'] = proxy_url
+
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(normalized_url, download=True)
+            break
+        except Exception as exc:
+            last_exc = exc
+            unavailable = 'Requested format is not available' in str(exc)
+            logger.warning('yt-dlp %s download failed with selector=%s. unavailable=%s', stream_kind, selector, unavailable)
+            if unavailable:
+                continue
+            raise
+
+    if info is None:
+        raise RuntimeError(f'Failed to download {stream_kind}') from last_exc
+
+    video_id = info.get('id')
+    if not video_id:
+        raise RuntimeError('yt-dlp did not return video id.')
+
+    ext = 'mp4' if stream_kind == 'video' else 'm4a'
+    target = out_dir / f'{video_id}.{ext}'
+    if target.exists():
+        return info, target
+
+    same_ext = sorted(out_dir.glob(f'{video_id}.{ext}'))
+    if same_ext:
+        return info, same_ext[0]
+
+    raise RuntimeError(f'{stream_kind} download must be .{ext}, but no file found for id={video_id}')
+
+
 def _thumbnail_sort_key(thumb: dict[str, Any]) -> tuple[int, int, int, int]:
     width = int(thumb.get('width') or 0)
     height = int(thumb.get('height') or 0)
@@ -138,11 +198,10 @@ def download_media(
     proxy_url: str = '',
     playlist_strategy: str = 'first',
 ) -> dict[str, Any]:
-    """Download a YouTube video as a single mp4 file (video + audio pre-muxed).
+    """Download YouTube video as two separate streams: video-only mp4 + audio-only m4a.
 
-    Uses ``best[ext=mp4]`` format selector — YouTube serves 1080p max
-    resolution when selecting the mp4 stream directly, including audio.
-    No ffmpeg required.
+    Server stores them separately (no ffmpeg merge).
+    Local client merges with ffmpeg after pulling both files.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -151,61 +210,24 @@ def download_media(
 
     normalized_url = _normalize_youtube_url_for_first_item(url)
     if normalized_url != url:
-        logger.info('Playlist-style URL normalized to first-item URL. from=%s to=%s', url, normalized_url)
+        logger.info('Playlist-style URL normalized. from=%s to=%s', url, normalized_url)
 
-    fmt = settings.ytdlp_format
-    logger.info('yt-dlp start. url=%s proxy=%s format=%s output_dir=%s',
-                normalized_url, proxy_url or 'none', fmt, out_dir)
+    logger.info('yt-dlp start. url=%s proxy=%s video_fmt=%s audio_fmt=%s output_dir=%s',
+                normalized_url, proxy_url or 'none',
+                settings.ytdlp_video_format, settings.ytdlp_audio_format, out_dir)
 
-    opts: dict[str, Any] = {
-        'quiet': False,
-        'noplaylist': True,
-        'outtmpl': str(out_dir / '%(id)s.%(ext)s'),
-        'format': fmt,
-    }
-    if cookie_file:
-        opts['cookiefile'] = cookie_file
-    if proxy_url:
-        opts['proxy'] = proxy_url
+    # Download video stream (no audio)
+    video_info, video_path = _download_stream(normalized_url, out_dir, 'video', cookie_file, proxy_url)
 
-    last_exc: Exception | None = None
-    info: dict[str, Any] | None = None
+    # Download audio stream
+    _audio_info, audio_path = _download_stream(normalized_url, out_dir, 'audio', cookie_file, proxy_url)
 
-    # Try configured format, then fall back to best mp4
-    for selector in [fmt, 'best[ext=mp4]']:
-        opts['format'] = selector
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(normalized_url, download=True)
-            break
-        except Exception as exc:
-            last_exc = exc
-            unavailable = 'Requested format is not available' in str(exc)
-            logger.warning('yt-dlp failed with format=%s. unavailable=%s', selector, unavailable)
-            if unavailable and selector != 'best[ext=mp4]':
-                continue
-            raise
+    # Download thumbnail
+    thumbnail_path, thumbnail_meta = _download_best_thumbnail(video_info, out_dir, proxy_url=proxy_url)
 
-    if info is None:
-        raise RuntimeError(f'Failed to download video: {normalized_url}') from last_exc
-
-    video_id = info.get('id')
-    if not video_id:
-        raise RuntimeError('yt-dlp did not return video id.')
-
-    # Find downloaded mp4
-    candidates = [p for p in sorted(out_dir.glob(f'{video_id}.mp4'))
-                  if not p.name.endswith('.part') and '.thumbnail.' not in p.name and p.is_file()]
-    if not candidates:
-        raise RuntimeError(f'No mp4 file found for id={video_id} in {out_dir}')
-
-    video_path = candidates[0]
-
-    # Thumbnail
-    thumbnail_path, thumbnail_meta = _download_best_thumbnail(info, out_dir, proxy_url=proxy_url)
-
+    # Build + save metadata
     metadata = _build_video_metadata(
-        info=info,
+        info=video_info,
         source_url=url,
         normalized_url=normalized_url,
         playlist_strategy=playlist_strategy,
@@ -213,16 +235,16 @@ def download_media(
     metadata['best_thumbnail'] = thumbnail_meta
     metadata['thumbnail_path'] = str(thumbnail_path) if thumbnail_path else ''
 
-    # save full metadata as JSON alongside the video
-    meta_path = out_dir / f'{video_id}.video_info.json'
+    meta_path = out_dir / f'{video_info.get("id")}.video_info.json'
     meta_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding='utf-8')
 
-    logger.info('yt-dlp completed. id=%s title=%s video=%s thumbnail=%s',
-                metadata.get('id'), metadata.get('title'), video_path, thumbnail_path or 'none')
+    logger.info('yt-dlp completed. id=%s title=%s video=%s audio=%s thumbnail=%s',
+                metadata.get('id'), metadata.get('title'), video_path, audio_path, thumbnail_path or 'none')
 
     return {
-        'title': info.get('title', info.get('id', 'unknown')),
+        'title': video_info.get('title', video_info.get('id', 'unknown')),
         'video_path': video_path,
+        'audio_path': audio_path,
         'thumbnail_path': thumbnail_path,
         'metadata': metadata,
     }
