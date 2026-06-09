@@ -99,7 +99,12 @@ def _discover_candidates_ytdlp(
                     language_hint=lang_hint,
                     allowed_languages=allowed_langs,
                     min_views=min_views,
-                    min_comments=min_comments,
+                    # yt-dlp flat search never exposes comment_count (hard-coded to 0
+                    # above), so a non-zero min_comments would filter out every
+                    # candidate. Ignore it here regardless of settings — anyone
+                    # wanting a comment-count filter should switch to the YouTube
+                    # Data API path.
+                    min_comments=0,
                     min_duration_sec=min_duration_sec,
                     max_duration_sec=max_duration_sec,
                 ):
