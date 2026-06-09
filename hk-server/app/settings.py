@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     discovery_max_results_per_keyword: int = Field(default=15)
     discovery_top_n: int = Field(default=5)
     discovery_min_views: int = Field(default=10000)
-    discovery_min_comments: int = Field(default=10)
+    discovery_min_comments: int = Field(default=0)  # yt-dlp flat search cannot provide comment_count
     discovery_min_duration_sec: int = Field(default=60)
     discovery_max_duration_sec: int = Field(default=1800)
     discovery_http_retries: int = Field(default=3)
