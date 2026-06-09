@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 def _dir_size(path: Path) -> int:
-    """Return total size in bytes of all files under *path*."""
     if not path.exists():
         return 0
     total = 0
@@ -35,35 +34,46 @@ def _dir_size(path: Path) -> int:
     return total
 
 
-def run_discovery_and_download() -> dict[str, Any]:
-    """Run one complete cycle: discovery -> persist -> download high-score -> cleanup.
+def _discovery_cache_valid(db_path: Path) -> bool:
+    """Return True if discovery was already run today (24h cache)."""
+    import sqlite3
+    try:
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                "SELECT discovered_at FROM discovered_videos "
+                "WHERE datetime(discovered_at) > datetime('now', '-1 day') "
+                "ORDER BY discovered_at DESC LIMIT 1"
+            ).fetchone()
+        return row is not None
+    except Exception:
+        return False
 
-    Returns a summary dict with counts.
-    """
+
+def run_discovery_and_download() -> dict[str, Any]:
     summary: dict[str, Any] = {
-        'discovered': 0,
-        'persisted': 0,
-        'downloaded': 0,
-        'failed': 0,
-        'cleaned': 0,
+        'discovered': 0, 'persisted': 0, 'downloaded': 0,
+        'failed': 0, 'cleaned': 0, 'cached': False,
     }
 
-    # 1. Discovery
-    logger.info('=== Discovery cycle start ===')
-    raw, selected = run_discovery_once()
-    summary['discovered'] = len(selected)
-    if not selected:
-        logger.info('No candidates discovered.')
-        return summary
-
-    # 2. Persist
     db_path = settings.discovery_db_path.resolve()
     init_db(db_path)
-    count = upsert_candidates(db_path, selected)
-    summary['persisted'] = count
-    logger.info('Persisted %d candidates to DB', count)
 
-    # 3. Download high-score candidates
+    # 1. Discovery (skip if already run today)
+    if _discovery_cache_valid(db_path):
+        logger.info('Discovery skipped — already run in the past 24h')
+        summary['cached'] = True
+    else:
+        logger.info('=== Discovery cycle start ===')
+        raw, selected = run_discovery_once()
+        summary['discovered'] = len(selected)
+        if selected:
+            count = upsert_candidates(db_path, selected)
+            summary['persisted'] = count
+            logger.info('Persisted %d candidates to DB', count)
+        if not selected:
+            logger.info('No new candidates discovered.')
+
+    # 2. Download pending candidates
     media_root = settings.download_media_dir.resolve()
     min_score = settings.discovery_download_min_score
     pending = get_pending_downloads(db_path, limit=50, min_score=min_score)
@@ -73,8 +83,6 @@ def run_discovery_and_download() -> dict[str, Any]:
         vid = p['video_id']
         url = p['url']
         category = p.get('category', 'uncategorised') or 'uncategorised'
-
-        # per-video output dir: runtime/downloads/{category}/{video_id}/
         out_dir = media_root / category / vid
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -82,7 +90,7 @@ def run_discovery_and_download() -> dict[str, Any]:
         mark_downloading(db_path, vid)
 
         try:
-            result = download_media(
+            download_media(
                 url=str(url),
                 out_dir=out_dir,
                 cookie_file=settings.cookie_file,
@@ -94,7 +102,6 @@ def run_discovery_and_download() -> dict[str, Any]:
             summary['downloaded'] += 1
             logger.info('Download OK: %s size=%d', vid, total_size)
         except Exception as exc:
-            # clean up partial download dir
             if out_dir.exists():
                 try:
                     shutil.rmtree(out_dir)
@@ -104,7 +111,7 @@ def run_discovery_and_download() -> dict[str, Any]:
             summary['failed'] += 1
             logger.warning('Download failed: %s err=%s', vid, exc)
 
-        # 4. Cleanup after each download
+        # 3. Cleanup after each download
         cleaned = cleanup_if_needed(
             db_path=db_path,
             media_dir=media_root,
@@ -115,8 +122,8 @@ def run_discovery_and_download() -> dict[str, Any]:
             summary['cleaned'] += cleaned
 
     logger.info(
-        '=== Discovery cycle complete: discovered=%d persisted=%d downloaded=%d failed=%d cleaned=%d ===',
-        summary['discovered'], summary['persisted'], summary['downloaded'],
-        summary['failed'], summary['cleaned'],
+        '=== Cycle complete: cached=%s discovered=%d persisted=%d downloaded=%d failed=%d cleaned=%d ===',
+        summary['cached'], summary['discovered'], summary['persisted'],
+        summary['downloaded'], summary['failed'], summary['cleaned'],
     )
     return summary
