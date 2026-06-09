@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     disk_max_storage_gb: float = Field(default=50.0)
     disk_max_retention_days: int = Field(default=7)
 
+    # seconds between each video download to avoid triggering rate limits
+    download_interval_sec: int = Field(default=180)
+
     # ── api server ──
     api_token: str = Field(default='')
     api_host: str = Field(default='0.0.0.0')

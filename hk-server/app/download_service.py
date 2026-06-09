@@ -120,7 +120,9 @@ def run_discovery_and_download() -> dict[str, Any]:
     pending = get_pending_downloads(db_path, limit=50, min_score=min_score)
     logger.info("Download queue: %d candidates with score >= %.1f", len(pending), min_score)
 
-    for p in pending:
+    interval = settings.download_interval_sec
+
+    for i, p in enumerate(pending):
         vid = p["video_id"]
         url = p["url"]
         category = p.get("category", "uncategorised") or "uncategorised"
@@ -161,6 +163,11 @@ def run_discovery_and_download() -> dict[str, Any]:
         )
         if cleaned:
             summary["cleaned"] += cleaned
+
+        # wait between downloads to avoid rate limiting
+        if i < len(pending) - 1 and interval > 0:
+            logger.info("Waiting %ds before next download...", interval)
+            time.sleep(interval)
 
     logger.info(
         "=== Cycle complete: cached=%s discovered=%d persisted=%d downloaded=%d failed=%d cleaned=%d ===",
