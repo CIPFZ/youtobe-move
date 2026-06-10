@@ -95,12 +95,12 @@ class _ApiHandler(BaseHTTPRequestHandler):
                 _error_response(self, 'Invalid video_id', status=400)
                 return
             # check for /meta sub-path
-            if len(parts) >= 5 and parts[3] == 'meta':
+            if len(parts) >= 4 and parts[3] == 'meta':
                 self._handle_get_meta(video_id)
                 return
             # check for /file sub-path
 
-            if len(parts) >= 5 and parts[3] == 'file':
+            if len(parts) >= 4 and parts[3] == 'file':
                 file_type = qs.get('type', ['video'])[0].lower()
                 self._handle_get_file(video_id, file_type)
                 return
