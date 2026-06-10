@@ -100,26 +100,50 @@ def fetch_hk_stats() -> dict[str, Any]:
     return resp.json()
 
 
-def download_hk_file(video_id: str, file_type: str, dest_path: Path) -> bool:
+def download_hk_file(video_id: str, file_type: str, dest_path: Path, max_retries: int = 3) -> bool:
+    """Download a single file from HK API with resume support and retry on connection errors."""
     url = f"{HK_SERVER_URL.rstrip('/')}/api/videos/{video_id}/file"
     params = {"type": file_type}
     dest_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with _hk_session.get(url, params=params, headers=_auth_headers(),
-                          stream=True, timeout=(30, 300)) as resp:
-            resp.raise_for_status()
-            with dest_path.open("wb") as f:
-                for chunk in resp.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
-        return True
-    except Exception:
-        if dest_path.exists():
-            try:
-                dest_path.unlink()
-            except OSError:
-                pass
-        raise
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            # resume from partial download if exists
+            existing_size = dest_path.stat().st_size if dest_path.exists() else 0
+            headers = dict(_auth_headers())
+            if existing_size > 0:
+                headers["Range"] = f"bytes={existing_size}-"
+
+            with _hk_session.get(url, params=params, headers=headers,
+                              stream=True, timeout=(30, 600)) as resp:
+                if resp.status_code not in (200, 206):
+                    resp.raise_for_status()
+
+                mode = "ab" if resp.status_code == 206 else "wb"
+                with dest_path.open(mode) as f:
+                    for chunk in resp.iter_content(chunk_size=256 * 1024):
+                        if chunk:
+                            f.write(chunk)
+
+            # verify download
+            if dest_path.stat().st_size == 0:
+                raise RuntimeError("Downloaded empty file")
+            return True
+
+        except Exception as exc:
+            if attempt < max_retries:
+                wait = attempt * 10
+                logger.warning("Download %s/%s retry %d/%d after %ds: %s",
+                               video_id, file_type, attempt, max_retries, wait, exc)
+                time.sleep(wait)
+            else:
+                # clean up partial on final failure
+                if dest_path.exists():
+                    try:
+                        dest_path.unlink()
+                    except OSError:
+                        pass
+                raise
 
 
 def download_hk_meta(video_id: str) -> dict[str, Any]:

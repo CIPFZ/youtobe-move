@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -49,16 +50,59 @@ def _check_auth(handler: BaseHTTPRequestHandler) -> bool:
 
 
 def _stream_file(handler: BaseHTTPRequestHandler, disk_path: Path, content_type: str = 'application/octet-stream') -> None:
+    """Stream a file with Range support (resume), zero-copy via sendfile."""
     if not disk_path.exists():
         _error_response(handler, 'File not found on disk', status=404)
         return
+
     file_size = disk_path.stat().st_size
-    handler.send_response(200)
+    range_header = handler.headers.get('Range', '')
+    start = 0
+    end = file_size - 1
+
+    if range_header.startswith('bytes='):
+        try:
+            r = range_header[6:]
+            if '-' in r:
+                parts = r.split('-', 1)
+                if parts[0]:
+                    start = int(parts[0])
+                if parts[1]:
+                    end = int(parts[1])
+                if start < 0 or start >= file_size:
+                    _error_response(handler, 'Range Not Satisfiable', status=416)
+                    return
+                end = min(end, file_size - 1)
+        except (ValueError, IndexError):
+            pass  # malformed range → serve full file
+
+    content_length = end - start + 1
+    is_partial = (start != 0 or end != file_size - 1)
+
+    if is_partial:
+        handler.send_response(206)
+        handler.send_header('Content-Range', f'bytes {start}-{end}/{file_size}')
+    else:
+        handler.send_response(200)
     handler.send_header('Content-Type', content_type)
-    handler.send_header('Content-Length', str(file_size))
+    handler.send_header('Content-Length', str(content_length))
+    handler.send_header('Accept-Ranges', 'bytes')
     handler.end_headers()
+
+    # zero-copy sendfile (kernel-level, minimal CPU/memory)
     with disk_path.open('rb') as fsrc:
-        shutil.copyfileobj(fsrc, handler.wfile, length=1024 * 1024)  # 1 MiB chunks
+        fd = fsrc.fileno()
+        sock_fd = handler.wfile.fileno()
+        if start > 0:
+            fsrc.seek(start)
+        remaining = content_length
+        offset = 0
+        while remaining > 0:
+            sent = os.sendfile(sock_fd, fd, start + offset, remaining)
+            if sent == 0:
+                break
+            offset += sent
+            remaining -= sent
 
 
 # ── path helpers ──
