@@ -392,9 +392,14 @@ def sync_hk_videos() -> dict[str, Any]:
         summary["new"] = len(new_ids)
         logger.info("New videos to download: %d", len(new_ids))
 
-        # 3. Download + merge each new video
-        if HK_AUTO_DOWNLOAD and new_ids:
-            for vid in new_ids:
+        # 3. Collect all videos to download: new + existing pending
+        pending_rows = conn.execute(
+            "SELECT video_id, category FROM hk_videos WHERE download_status='pending'"
+        ).fetchall()
+        pending_ids = [r[0] for r in pending_rows]
+        all_download_ids = list(dict.fromkeys(new_ids + pending_ids))  # dedup, preserve order
+        if HK_AUTO_DOWNLOAD and all_download_ids:
+            for vid in all_download_ids:
                 row = conn.execute(
                     "SELECT video_id, category FROM hk_videos WHERE video_id=?", (vid,),
                 ).fetchone()
