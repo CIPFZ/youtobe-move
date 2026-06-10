@@ -481,10 +481,28 @@ def publish_pending(
             summary["skipped"] += 1
             continue
 
-        # Build Bilibili metadata
+        # Build Bilibili metadata — use AI to generate Chinese content
         tid = BILIBILI_TID_MAP.get(category, 174)
         tags = BILIBILI_TAG_MAP.get(category, ["搬运", "YouTube"])
-        desc = f"原视频: {url}\n频道: {v.get('channel_title', '') or 'N/A'}"
+
+        # Load meta JSON and generate Chinese description
+        meta_path = Path(str(v.get("meta_path", "") or ""))
+        if meta_path.exists():
+            try:
+                import json as _json
+                meta = _json.loads(meta_path.read_text(encoding="utf-8"))
+                from ai_describe import generate_chinese_metadata
+                cn = generate_chinese_metadata(meta, category)
+                title = cn.get("title", str(v.get("title", "") or ""))
+                desc = cn.get("description", "")
+                tags = cn.get("tags", tags)
+            except Exception as exc:
+                logger.warning("AI describe failed for %s: %s, using raw", vid, exc)
+                title = str(v.get("title", "") or "")
+                desc = f"原视频: {url}\n频道: {v.get('channel_title', '') or 'N/A'}"
+        else:
+            title = str(v.get("title", "") or "")
+            desc = f"原视频: {url}\n频道: {v.get('channel_title', '') or 'N/A'}"
 
         logger.info("Publishing to Bilibili: %s (%s)", title[:50], vid)
 
