@@ -89,19 +89,36 @@ def _stream_file(handler: BaseHTTPRequestHandler, disk_path: Path, content_type:
     handler.send_header('Accept-Ranges', 'bytes')
     handler.end_headers()
 
-    # zero-copy sendfile (kernel-level, minimal CPU/memory)
+    # stream file — use sendfile on Linux, fallback to chunked copy
     with disk_path.open('rb') as fsrc:
-        fd = fsrc.fileno()
-        sock_fd = handler.wfile.fileno()
         if start > 0:
             fsrc.seek(start)
+
+        if hasattr(os, 'sendfile'):
+            # Linux sendfile(out_fd, in_fd, offset, count)
+            try:
+                fd = fsrc.fileno()
+                sock_fd = handler.wfile.fileno()
+                offset = start
+                remaining = content_length
+                while remaining > 0:
+                    sent = os.sendfile(sock_fd, fd, offset, remaining)
+                    if sent == 0:
+                        break
+                    offset += sent
+                    remaining -= sent
+                return
+            except (OSError, TypeError, AttributeError):
+                pass  # fallback to chunked copy
+
+        # fallback: chunked copy (works everywhere)
         remaining = content_length
-        offset = 0
         while remaining > 0:
-            sent = os.sendfile(sock_fd, fd, start + offset, remaining)
-            if sent == 0:
+            chunk = fsrc.read(min(1024 * 1024, remaining))
+            if not chunk:
                 break
-            offset += sent
+            handler.wfile.write(chunk)
+            remaining -= len(chunk)
             remaining -= sent
 
 
