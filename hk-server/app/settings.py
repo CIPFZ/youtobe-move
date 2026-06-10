@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     cookie_file: str = Field(default='')
     ytdlp_proxy: str = Field(default='')
     playlist_strategy: str = Field(default='first')
-    ytdlp_video_format: str = Field(default='bestvideo[ext=mp4]')
+    ytdlp_video_format: str = Field(default='bestvideo[ext=mp4][vcodec^=avc1]')
     ytdlp_audio_format: str = Field(default='bestaudio[ext=m4a]')
 
     # logging

@@ -123,20 +123,47 @@ def delete_hk_video(video_id: str) -> bool:
     return resp.status_code == 200
 
 
-# ── ffmpeg merge ──
+# ── ffmpeg merge (auto-detect AV1 → GPU transcode to H.264) ──
+
+def _probe_vcodec(video_path: Path) -> str:
+    """Return video codec name, e.g. 'h264' or 'av1'."""
+    import subprocess as _sp
+    r = _sp.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1",
+         str(video_path)],
+        capture_output=True, text=True, timeout=15,
+    )
+    return r.stdout.strip()
+
 
 def merge_video_audio(video_path: Path, audio_path: Path, output_path: Path) -> Path:
-    """Merge video + audio with ffmpeg (no re-encode, fast remux)."""
+    """Merge video + audio. If video codec is AV1, GPU-transcode to H.264."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", str(video_path),
-        "-i", str(audio_path),
-        "-c", "copy",
-        "-movflags", "+faststart",
-        str(output_path),
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    vcodec = _probe_vcodec(video_path)
+
+    if vcodec in ("av1", "vp9", "vp8"):
+        logger.info("Video codec is %s, GPU-transcoding to H.264", vcodec)
+        cmd = [
+            "ffmpeg", "-y",
+            "-hwaccel", "cuda", "-hwaccel_output_format", "cuda",
+            "-i", str(video_path), "-i", str(audio_path),
+            "-c:v", "h264_nvenc", "-preset", "p6",
+            "-rc", "vbr", "-cq", "23", "-b:v", "0",
+            "-c:a", "copy",
+            "-movflags", "+faststart",
+            str(output_path),
+        ]
+    else:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(video_path), "-i", str(audio_path),
+            "-c", "copy",
+            "-movflags", "+faststart",
+            str(output_path),
+        ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg merge failed: {result.stderr.strip()}")
     return output_path

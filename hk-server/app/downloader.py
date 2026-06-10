@@ -85,9 +85,9 @@ def _build_video_metadata(info: dict[str, Any], source_url: str, normalized_url:
 def _stream_candidates(stream_kind: str) -> list[str]:
     primary = settings.ytdlp_video_format if stream_kind == 'video' else settings.ytdlp_audio_format
     if stream_kind == 'video':
-        fallback = ['bestvideo[ext=mp4]']
+        fallback = ['bestvideo[ext=mp4]', 'best[ext=mp4]']
     else:
-        fallback = ['bestaudio[ext=m4a]']
+        fallback = ['bestaudio[ext=m4a]', 'bestaudio']
     candidates: list[str] = []
     for sel in [primary, *fallback]:
         if sel and sel not in candidates:
