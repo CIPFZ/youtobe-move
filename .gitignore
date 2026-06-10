@@ -34,3 +34,13 @@ dist/
 *.tmp
 *.log
 ~
+
+# Database runtime files
+*.db-shm
+*.db-wal
+
+# Download test dirs
+download/
+
+# QR code (generated at runtime)
+qrcode.png

@@ -842,6 +842,25 @@ def hk_serve_file(video_id: str):
     return send_from_directory(str(target.parent), target.name)
 
 
+@app.route('/hk/publish', methods=['POST'])
+def hk_trigger_publish():
+    """Trigger publishing pending videos to Bilibili in background."""
+    data = request.get_json(force=True, silent=True) or {}
+    interval_min = int(data.get('interval_min', 30))
+
+    def _bg():
+        try:
+            from hk_puller import publish_pending
+            summary = publish_pending(interval_min=interval_min)
+            logger.info("Manual HK publish complete: %s", summary)
+        except Exception as exc:
+            logger.error("Manual HK publish failed: %s", exc)
+
+    t = threading.Thread(target=_bg, daemon=True)
+    t.start()
+    return jsonify({"started": True, "message": f"Publish triggered, interval={interval_min}min"}), 200
+
+
 if __name__ == '__main__':
     # start HK poller (if enabled)
     if HK_AUTO_DOWNLOAD:
