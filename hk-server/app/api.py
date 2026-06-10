@@ -317,7 +317,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
         def _bg() -> None:
             try:
                 from app.discovery.repository import (
-                    get_video_by_id, init_db, mark_downloaded, mark_download_failed, mark_downloading,
+                    ensure_video_row, init_db, mark_downloaded, mark_download_failed, mark_downloading,
                 )
                 from app.disk_cleaner import cleanup_if_needed
                 from app.downloader import download_media
@@ -338,7 +338,8 @@ class _ApiHandler(BaseHTTPRequestHandler):
                 out_dir = media_root / category / vid
                 out_dir.mkdir(parents=True, exist_ok=True)
 
-                # register in DB
+                # ensure DB row exists (for manual downloads that skip discovery)
+                ensure_video_row(db_path, vid, url, category)
                 mark_downloading(db_path, vid)
 
                 result = download_media(

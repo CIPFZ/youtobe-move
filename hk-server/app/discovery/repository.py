@@ -144,6 +144,23 @@ def mark_downloading(db_path: Path, video_id: str) -> None:
         )
 
 
+def ensure_video_row(db_path: Path, video_id: str, url: str, category: str) -> None:
+    """Insert a minimal row if it doesn't exist (for manual URL downloads)."""
+    now = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO discovered_videos (
+                video_id, discovered_at, url, title, description,
+                channel_id, channel_title, published_at, language_hint,
+                duration_sec, view_count, comment_count, like_count,
+                keyword, category, score, raw_json
+            ) VALUES (?, ?, ?, '', '', '', '', '', '', 0, 0, 0, 0, 'manual', ?, 0.0, '{}')
+            """,
+            (video_id, now, url, category or 'manual'),
+        )
+
+
 def mark_downloaded(db_path: Path, video_id: str, file_path: str, file_size: int) -> None:
     now = datetime.now(timezone.utc).isoformat()
     with sqlite3.connect(db_path) as conn:
