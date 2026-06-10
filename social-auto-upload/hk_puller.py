@@ -335,6 +335,12 @@ def sync_hk_videos() -> dict[str, Any]:
         logger.info("=== HK sync cycle start ===")
         conn = _get_conn()
 
+        # 0. Reset previously-failed downloads to pending (retry)
+        conn.execute(
+            "UPDATE hk_videos SET download_status='pending', error='' WHERE download_status='failed'"
+        )
+        conn.commit()
+
         # 1. Fetch video list from HK
         all_videos: list[dict[str, Any]] = []
         offset = 0
