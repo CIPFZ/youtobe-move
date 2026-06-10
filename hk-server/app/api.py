@@ -119,7 +119,6 @@ def _stream_file(handler: BaseHTTPRequestHandler, disk_path: Path, content_type:
                 break
             handler.wfile.write(chunk)
             remaining -= len(chunk)
-            remaining -= sent
 
 
 # ── path helpers ──
