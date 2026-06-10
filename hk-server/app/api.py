@@ -142,6 +142,10 @@ class _ApiHandler(BaseHTTPRequestHandler):
             self._handle_trigger_discovery()
             return
 
+        if path == '/api/download':
+            self._handle_post_download()
+            return
+
         _error_response(self, 'Not found', status=404)
 
     # ── handler methods ──
@@ -285,6 +289,87 @@ class _ApiHandler(BaseHTTPRequestHandler):
         t = threading.Thread(target=_bg, daemon=True)
         t.start()
         _json_response(self, {'started': True, 'message': 'Discovery + download triggered in background'})
+
+    def _handle_post_download(self) -> None:
+        """POST /api/download — download a specific YouTube URL.
+
+        Body: {"url": "https://www.youtube.com/watch?v=xxx", "category": "pets"}
+        Returns video_id immediately, download runs in background.
+        """
+        content_length = int(self.headers.get('Content-Length', 0))
+        if content_length == 0:
+            _error_response(self, 'Empty request body', status=400)
+            return
+
+        try:
+            body = json.loads(self.rfile.read(content_length))
+        except Exception:
+            _error_response(self, 'Invalid JSON body', status=400)
+            return
+
+        url = str(body.get('url', '') or '').strip()
+        if not url:
+            _error_response(self, '"url" is required', status=400)
+            return
+
+        category = str(body.get('category', 'manual') or 'manual').strip()
+
+        def _bg() -> None:
+            try:
+                from app.discovery.repository import (
+                    get_video_by_id, init_db, mark_downloaded, mark_download_failed, mark_downloading,
+                )
+                from app.disk_cleaner import cleanup_if_needed
+                from app.downloader import download_media
+                from pathlib import Path
+
+                db_path = settings.discovery_db_path.resolve()
+                media_root = settings.download_media_dir.resolve()
+                init_db(db_path)
+
+                # extract video_id from URL
+                import re as _re
+                m = _re.search(r'(?:v=|/)([a-zA-Z0-9_-]{11})', url)
+                if not m:
+                    logger.error('Could not extract video_id from URL: %s', url)
+                    return
+                vid = m.group(1)
+
+                out_dir = media_root / category / vid
+                out_dir.mkdir(parents=True, exist_ok=True)
+
+                # register in DB
+                mark_downloading(db_path, vid)
+
+                result = download_media(
+                    url=url,
+                    out_dir=out_dir,
+                    cookie_file=settings.cookie_file,
+                    proxy_url=settings.ytdlp_proxy,
+                    playlist_strategy=settings.playlist_strategy,
+                )
+                total_size = sum(
+                    f.stat().st_size for f in out_dir.rglob('*') if f.is_file()
+                )
+                mark_downloaded(db_path, vid, str(out_dir), total_size)
+                logger.info('Manual download OK: %s (%s) size=%d', vid, url, total_size)
+
+                cleanup_if_needed(
+                    db_path=db_path, media_dir=media_root,
+                    max_gb=settings.disk_max_storage_gb,
+                    max_days=settings.disk_max_retention_days,
+                )
+            except Exception as exc:
+                logger.error('Manual download failed: %s err=%s', url, exc)
+
+        t = threading.Thread(target=_bg, daemon=True)
+        t.start()
+
+        # extract video_id for response
+        import re as _re
+        m = _re.search(r'(?:v=|/)([a-zA-Z0-9_-]{11})', url)
+        video_id = m.group(1) if m else ''
+        _json_response(self, {'started': True, 'video_id': video_id, 'url': url})
 
     def log_message(self, fmt: str, *args: object) -> None:
         logger.debug('API %s', fmt % args)
