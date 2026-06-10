@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube 搬运管家</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; }
+        .app { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #2a2a2a; }
+        .header h1 { font-size: 22px; color: #fff; }
+        .header .sub { font-size: 13px; color: #888; margin-left: 8px; }
+        .stats { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+        .stat-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 14px 18px; min-width: 100px; }
+        .stat-card .val { font-size: 28px; font-weight: 700; color: #4fc3f7; }
+        .stat-card .lbl { font-size: 12px; color: #888; margin-top: 2px; }
+        .actions { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn { padding: 8px 18px; border: 1px solid #333; border-radius: 6px; cursor: pointer; font-size: 13px; background: #1a1a1a; color: #e0e0e0; transition: all .2s; }
+        .btn:hover { background: #2a2a2a; border-color: #555; }
+        .btn.primary { background: #1565c0; border-color: #1976d2; color: #fff; }
+        .btn.primary:hover { background: #1976d2; }
+        .btn.success { background: #2e7d32; border-color: #388e3c; color: #fff; }
+        .btn.success:hover { background: #388e3c; }
+        .btn.warn { background: #e65100; border-color: #ef6c00; color: #fff; }
+        .btn.warn:hover { background: #ef6c00; }
+        .btn:disabled { opacity: .4; cursor: not-allowed; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 10px 8px; color: #888; font-weight: 500; border-bottom: 1px solid #2a2a2a; position: sticky; top: 0; background: #0f0f0f; }
+        td { padding: 10px 8px; border-bottom: 1px solid #1a1a1a; }
+        tr:hover td { background: #141414; }
+        .badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+        .badge.downloaded { background: #1b5e20; color: #81c784; }
+        .badge.pending { background: #424242; color: #9e9e9e; }
+        .badge.failed { background: #b71c1c; color: #ef9a9a; }
+        .badge.uploaded { background: #1a237e; color: #90caf9; }
+        .badge.downloading { background: #e65100; color: #ffcc80; }
+        .status-msg { padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; display: none; }
+        .status-msg.show { display: block; }
+        .status-msg.ok { background: #1b5e20; color: #a5d6a7; }
+        .status-msg.err { background: #b71c1c; color: #ef9a9a; }
+        .tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+        .tab { padding: 6px 14px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 13px; border: none; background: transparent; color: #888; }
+        .tab.active { background: #1a1a1a; color: #fff; }
+        .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #555; border-top-color: #4fc3f7; border-radius: 50%; animation: spin .6s linear infinite; margin-right: 6px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .empty { text-align: center; padding: 60px; color: #666; }
+    </style>
+</head>
+<body>
+<div class="app">
+    <div class="header">
+        <div>
+            <h1>📺 搬运管家<span class="sub">YouTube → Bilibili</span></h1>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <span id="hkStatus" style="font-size: 12px; color: #888;">香港服务器: --</span>
+        </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="actions">
+        <button class="btn primary" onclick="triggerSync()">🔄 拉取视频</button>
+        <button class="btn success" onclick="triggerPublish()">📤 发布到 B 站</button>
+        <button class="btn" onclick="loadAll()">🔃 刷新</button>
+        <input type="number" id="intervalMin" value="10" min="0" max="120"
+               style="width: 60px; background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 6px; border-radius: 6px; font-size: 13px;">
+        <span style="font-size: 12px; color: #888; line-height: 32px;">发布间隔(分)</span>
+    </div>
+
+    <div id="msg" class="status-msg"></div>
+
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('all')">全部</button>
+        <button class="tab" onclick="switchTab('pending')">待下载</button>
+        <button class="tab" onclick="switchTab('downloaded')">已下载</button>
+        <button class="tab" onclick="switchTab('uploaded')">已发布</button>
+        <button class="tab" onclick="switchTab('failed')">失败</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 60px;">封面</th>
+                <th>标题</th>
+                <th>分类</th>
+                <th style="width: 80px;">播放量</th>
+                <th style="width: 70px;">评分</th>
+                <th style="width: 90px;">下载状态</th>
+                <th style="width: 90px;">发布状态</th>
+            </tr>
+        </thead>
+        <tbody id="videoList"></tbody>
+    </table>
+</div>
+
+<script>
+const API = '';
+let currentTab = 'all';
+
+function api(path, opts) {
+    return fetch(API + path, opts).then(r => r.json());
+}
+
+function showMsg(text, ok) {
+    const el = document.getElementById('msg');
+    el.textContent = text;
+    el.className = 'status-msg show ' + (ok ? 'ok' : 'err');
+    setTimeout(() => el.className = 'status-msg', 3000);
+}
+
+async function loadStats() {
+    try {
+        const d = await api('/hk/stats');
+        const stats = document.getElementById('stats');
+        const hk = d.hk_server || {};
+        stats.innerHTML =
+            `<div class="stat-card"><div class="val">${d.total_videos || 0}</div><div class="lbl">本地视频</div></div>` +
+            `<div class="stat-card"><div class="val">${(d.by_status||{}).downloaded||0}</div><div class="lbl">已下载</div></div>` +
+            `<div class="stat-card"><div class="val">${(d.by_upload||{}).uploaded||0}</div><div class="lbl">已发布</div></div>` +
+            `<div class="stat-card"><div class="val">${hk.total_videos||'-'}</div><div class="lbl">香港视频</div></div>` +
+            `<div class="stat-card"><div class="val">${hk.total_size_gb||'0'} GB</div><div class="lbl">香港存储</div></div>`;
+        document.getElementById('hkStatus').textContent =
+            `香港: ${hk.total_videos||'?'} 视频 | ${hk.total_size_gb||'?'} GB`;
+    } catch(e) { document.getElementById('hkStatus').textContent = '香港服务器: 离线'; }
+}
+
+async function loadVideos() {
+    try {
+        let params = '';
+        if (currentTab === 'pending') params = '?status=downloading';
+        else if (currentTab === 'downloaded') params = '?status=downloaded&upload_status=pending';
+        else if (currentTab === 'uploaded') params = '?upload_status=uploaded';
+        else if (currentTab === 'failed') params = '?status=failed';
+
+        const d = await api('/hk/videos' + params);
+        const tbody = document.getElementById('videoList');
+        if (!d.videos.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无视频，点「拉取视频」开始</td></tr>';
+            return;
+        }
+        tbody.innerHTML = d.videos.map(v => `
+            <tr>
+                <td>📹</td>
+                <td style="max-width: 340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                    title="${esc(v.title||'')}">${esc((v.title||'').substring(0,60))}</td>
+                <td>${esc(v.category||'')}</td>
+                <td>${fmt(v.view_count)}</td>
+                <td>${(v.score||0).toFixed(1)}</td>
+                <td><span class="badge ${v.download_status}">${v.download_status||'?'}</span></td>
+                <td><span class="badge ${v.upload_status||'pending'}">${v.upload_status||'pending'}</span></td>
+            </tr>`).join('');
+    } catch(e) { console.error(e); }
+}
+
+function loadAll() { loadStats(); loadVideos(); }
+
+async function triggerSync() {
+    showMsg('正在拉取...', true);
+    try {
+        const r = await api('/hk/sync', {method:'POST'});
+        showMsg(r.message, true);
+        setTimeout(loadAll, 5000);
+    } catch(e) { showMsg('拉取失败: ' + e, false); }
+}
+
+async function triggerPublish() {
+    const interval = parseInt(document.getElementById('intervalMin').value) || 10;
+    showMsg(`正在发布 (间隔 ${interval} 分钟)...`, true);
+    try {
+        const r = await api('/hk/publish', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({interval_min: interval})});
+        showMsg(r.message, true);
+        setTimeout(loadAll, 8000);
+    } catch(e) { showMsg('发布失败: ' + e, false); }
+}
+
+function switchTab(t) { currentTab = t; document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.textContent.includes(t) || (t==='all'&&el.textContent==='全部'))); loadVideos(); }
+function esc(s) { return (s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmt(n) { n = parseInt(n)||0; return n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : n; }
+
+loadAll();
+setInterval(loadStats, 30000);
+</script>
+</body>
+</html>

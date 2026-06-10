@@ -42,6 +42,11 @@ BILIBILI_TAG_MAP = {
 logger = logging.getLogger("hk_puller")
 _sync_lock = threading.Lock()
 
+# HK server session — bypass local proxy (direct connect)
+_hk_session = requests.Session()
+_hk_session.proxies = {"http": None, "https": None}
+_hk_session.trust_env = False
+
 
 # ── DB helpers ──
 
@@ -74,14 +79,14 @@ def _auth_headers() -> dict[str, str]:
 def fetch_hk_videos(status: str = "downloaded", limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
     url = f"{HK_SERVER_URL.rstrip('/')}/api/videos"
     params: dict[str, Any] = {"download_status": status, "limit": limit, "offset": offset}
-    resp = requests.get(url, params=params, headers=_auth_headers(), timeout=30)
+    resp = _hk_session.get(url, params=params, headers=_auth_headers(), timeout=30)
     resp.raise_for_status()
     return list(resp.json().get("videos", []))
 
 
 def fetch_hk_stats() -> dict[str, Any]:
     url = f"{HK_SERVER_URL.rstrip('/')}/api/stats"
-    resp = requests.get(url, headers=_auth_headers(), timeout=30)
+    resp = _hk_session.get(url, headers=_auth_headers(), timeout=30)
     resp.raise_for_status()
     return resp.json()
 
@@ -91,7 +96,7 @@ def download_hk_file(video_id: str, file_type: str, dest_path: Path) -> bool:
     params = {"type": file_type}
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with requests.get(url, params=params, headers=_auth_headers(),
+        with _hk_session.get(url, params=params, headers=_auth_headers(),
                           stream=True, timeout=(30, 300)) as resp:
             resp.raise_for_status()
             with dest_path.open("wb") as f:
@@ -111,7 +116,7 @@ def download_hk_file(video_id: str, file_type: str, dest_path: Path) -> bool:
 def download_hk_meta(video_id: str) -> dict[str, Any]:
     """Fetch full .video_info.json metadata from HK server."""
     url = f"{HK_SERVER_URL.rstrip('/')}/api/videos/{video_id}/meta"
-    resp = requests.get(url, headers=_auth_headers(), timeout=30)
+    resp = _hk_session.get(url, headers=_auth_headers(), timeout=30)
     resp.raise_for_status()
     return resp.json()
 
@@ -119,7 +124,7 @@ def download_hk_meta(video_id: str) -> dict[str, Any]:
 def delete_hk_video(video_id: str) -> bool:
     """Notify HK server that video has been pulled (deletes server-side files)."""
     url = f"{HK_SERVER_URL.rstrip('/')}/api/videos/{video_id}"
-    resp = requests.delete(url, headers=_auth_headers(), timeout=30)
+    resp = _hk_session.delete(url, headers=_auth_headers(), timeout=30)
     return resp.status_code == 200
 
 
@@ -518,6 +523,18 @@ def publish_pending(
             _mark_uploaded(conn, vid, "bilibili")
             summary["published"] += 1
             logger.info("Published OK: %s", vid)
+
+            # Delete local merged video file to save disk space (keep DB record)
+            try:
+                merged_path.unlink(missing_ok=True)
+                # also clean up thumbnail and meta files in same directory
+                parent = merged_path.parent
+                if parent.exists():
+                    import shutil as _shutil
+                    _shutil.rmtree(parent, ignore_errors=True)
+                logger.info("Cleaned disk files for %s", vid)
+            except Exception as exc:
+                logger.warning("File cleanup failed for %s: %s", vid, exc)
         except Exception as exc:
             _mark_upload_failed(conn, vid, str(exc))
             summary["failed"] += 1
