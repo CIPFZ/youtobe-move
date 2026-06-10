@@ -95,6 +95,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
                 _error_response(self, 'Invalid video_id', status=400)
                 return
             # check for /meta sub-path
+            parts = [p for p in path.split('/') if p]
             if len(parts) >= 4 and parts[3] == 'meta':
                 self._handle_get_meta(video_id)
                 return
