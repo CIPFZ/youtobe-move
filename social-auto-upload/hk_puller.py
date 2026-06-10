@@ -201,7 +201,10 @@ def merge_video_audio(video_path: Path, audio_path: Path, output_path: Path) -> 
             str(output_path),
         ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    # Use adaptive timeout: 300s for files <200MB, 1200s for larger files
+    video_size = video_path.stat().st_size if video_path.exists() else 0
+    ffmpeg_timeout = 1200 if video_size > 200 * 1024 * 1024 else 300
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=ffmpeg_timeout)
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg merge failed: {result.stderr.strip()}")
     return output_path
