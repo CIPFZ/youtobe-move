@@ -19,7 +19,7 @@ import requests
 try:
     from conf import (
         BASE_DIR, HK_SERVER_URL, HK_API_TOKEN, HK_POLL_INTERVAL_MINUTES,
-        HK_AUTO_DOWNLOAD, HK_DOWNLOAD_DIRNAME,
+        HK_AUTO_DOWNLOAD, HK_DOWNLOAD_DIRNAME, HK_DOWNLOAD_INTERVAL_SEC,
     )
 except ImportError:
     raise RuntimeError("conf.py not found. Copy conf.example.py to conf.py and configure it.")
@@ -59,6 +59,15 @@ def _get_conn() -> sqlite3.Connection:
     db.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db))
     conn.execute("PRAGMA journal_mode=WAL")
+    # add missing columns (idempotent)
+    for col, defn in [
+        ("thumbnail_path", "TEXT NOT NULL DEFAULT ''"),
+        ("meta_path", "TEXT NOT NULL DEFAULT ''"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE hk_videos ADD COLUMN {col} {defn}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
     return conn
 
 
