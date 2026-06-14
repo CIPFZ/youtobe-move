@@ -117,26 +117,54 @@ def add_video_event(
         )
 
 
-def list_video_events(db_path: Path, video_id: str, limit: int = 100) -> list[dict[str, Any]]:
+def list_video_events(
+    db_path: Path,
+    video_id: str = '',
+    *,
+    task_id: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
     init_db(db_path)
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            """
+    sql = """
             SELECT event_id, video_id, task_id, event_type, message, data_json, created_at
             FROM video_events
-            WHERE video_id=?
-            ORDER BY event_id ASC
-            LIMIT ?
-            """,
-            (video_id, max(1, min(int(limit), 500))),
-        ).fetchall()
+            WHERE 1=1
+            """
+    params: list[Any] = []
+    if video_id:
+        sql += " AND video_id=?"
+        params.append(video_id)
+    if task_id is not None:
+        sql += " AND task_id=?"
+        params.append(task_id)
+    sql += " ORDER BY event_id ASC LIMIT ? OFFSET ?"
+    params.extend([max(1, min(int(limit), 500)), max(0, int(offset))])
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(sql, params).fetchall()
     out: list[dict[str, Any]] = []
     for row in rows:
         item = dict(row)
         item['data'] = _json_loads(item.pop('data_json', '{}'))
         out.append(item)
     return out
+
+
+def count_video_events(db_path: Path, video_id: str = '', *, task_id: int | None = None) -> int:
+    init_db(db_path)
+    sql = "SELECT COUNT(*) FROM video_events WHERE 1=1"
+    params: list[Any] = []
+    if video_id:
+        sql += " AND video_id=?"
+        params.append(video_id)
+    if task_id is not None:
+        sql += " AND task_id=?"
+        params.append(task_id)
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(sql, params).fetchone()
+    return int(row[0]) if row else 0
 
 
 def upsert_candidates(db_path: Path, items: list[VideoCandidate]) -> int:

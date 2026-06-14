@@ -83,6 +83,7 @@ curl -s -X POST http://127.0.0.1:8503/api/downloads \
   -d '{"url":"https://www.youtube.com/watch?v=VIDEO_ID_HERE","category":"manual"}'
 curl -s http://127.0.0.1:8503/api/tasks
 curl -s http://127.0.0.1:8503/api/videos/VIDEO_ID_HERE/events
+curl -s "http://127.0.0.1:8503/api/video-events?task_id=<task_id>&limit=20"
 ```
 
 ## Disk And Log Checks

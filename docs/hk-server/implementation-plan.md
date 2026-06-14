@@ -600,6 +600,15 @@ hk-server/tests/
 - 手动下载成功、失败、取消、进度、清理都在 service 层处理。
 - 新增离线测试覆盖手动下载成功和失败落库。
 
+### V2 第五批：视频事件查询增强
+
+当前状态：已实施。完成内容：
+
+- `GET /api/videos/<id>/events?task_id=&limit=&offset=` 支持分页和任务过滤。
+- 新增 `GET /api/video-events?video_id=&task_id=&limit=&offset=`。
+- repository 新增 `count_video_events()`。
+- 离线测试覆盖按 `task_id` 查询和分页。
+
 ### 第 1 批：稳定性最小闭环
 
 1. 新增 `app/task_state.py`。

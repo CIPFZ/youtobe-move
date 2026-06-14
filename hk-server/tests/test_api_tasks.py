@@ -85,10 +85,16 @@ def test_task_cancel_retry_and_video_events_http(monkeypatch, tmp_path):
         assert retry_body["data"]["task_id"] == 999
         assert retry_called["input"]["retry_of"] == running["task_id"]
 
-        with urllib.request.urlopen(base + "/api/videos/abc123def45/events", timeout=5) as resp:
+        with urllib.request.urlopen(base + f"/api/videos/abc123def45/events?task_id={running['task_id']}&limit=1&offset=1", timeout=5) as resp:
             events_body = json.loads(resp.read().decode("utf-8"))
         assert events_body["ok"] is True
-        assert [event["event_type"] for event in events_body["data"]["items"]] == ["downloading", "failed"]
+        assert events_body["data"]["total"] == 2
+        assert [event["event_type"] for event in events_body["data"]["items"]] == ["failed"]
+
+        with urllib.request.urlopen(base + f"/api/video-events?task_id={running['task_id']}", timeout=5) as resp:
+            task_events_body = json.loads(resp.read().decode("utf-8"))
+        assert task_events_body["ok"] is True
+        assert [event["event_type"] for event in task_events_body["data"]["items"]] == ["downloading", "failed"]
     finally:
         server.shutdown()
         server.server_close()

@@ -85,7 +85,8 @@ GET  /api/stats
 `POST /api/tasks/<id>/cancel`、`POST /api/tasks/<id>/retry`、`GET /api/videos/<id>/events`
 已实现；`videos` 已记录 `task_id`、`download_attempts`、`last_error_at`、`download_progress`。
 `downloader.py` 已接入 yt-dlp progress hook，下载中会实时更新 `download_progress`
-并写入 progress 事件。
+并写入 progress 事件。`GET /api/video-events` 已支持按 `video_id`、`task_id`
+分页查询视频事件。
 
 ### 3.1 目标
 
@@ -177,6 +178,7 @@ GET  /api/tasks/<id>
 POST /api/tasks/<id>/retry
 POST /api/tasks/<id>/cancel
 GET  /api/videos/<id>/events
+GET  /api/video-events?video_id=&task_id=&limit=&offset=
 ```
 
 当前已实现 `GET /api/tasks`、`GET /api/tasks/<id>`、retry、cancel 和 video events。

@@ -68,6 +68,10 @@ def test_repository_schema_and_status_flow(tmp_path):
     assert [event["event_type"] for event in events] == ["downloading", "downloaded", "pulled"]
     assert events[0]["task_id"] == 42
 
+    assert repo.count_video_events(db_path, "abc123def45", task_id=42) == 2
+    paged = repo.list_video_events(db_path, "abc123def45", task_id=42, limit=1, offset=1)
+    assert [event["event_type"] for event in paged] == ["downloaded"]
+
 
 def test_progress_callback_updates_video_progress_and_events(tmp_path):
     db_path = tmp_path / "discovery.db"

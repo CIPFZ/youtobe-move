@@ -97,7 +97,8 @@ JSON API 错误响应统一为：
 | GET | `/api/videos?status=downloaded` | 待拉取列表；推荐查询参数 |
 | GET | `/api/videos?download_status=downloaded` | 旧查询参数，兼容别名 |
 | GET | `/api/videos/<id>` | 视频详情 |
-| GET | `/api/videos/<id>/events` | 视频级事件 |
+| GET | `/api/videos/<id>/events?task_id=&limit=&offset=` | 视频级事件 |
+| GET | `/api/video-events?video_id=&task_id=&limit=&offset=` | 视频事件全局查询 |
 | GET | `/api/videos/<id>/meta` | 完整 .video_info.json |
 | GET | `/api/videos/<id>/file?type=video` | 下载视频流(.mp4) |
 | GET | `/api/videos/<id>/file?type=audio` | 下载音频流(.m4a) |

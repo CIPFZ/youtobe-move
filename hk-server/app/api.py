@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from app.discovery.repository import (
+    count_video_events,
     count_videos,
     get_storage_stats,
     get_video_by_id,
@@ -215,6 +216,10 @@ class _ApiHandler(BaseHTTPRequestHandler):
             self._handle_list_videos(qs)
             return
 
+        if path == '/api/video-events':
+            self._handle_list_video_events(qs)
+            return
+
         # GET /api/videos/<id> — detail or file
         if path.startswith('/api/videos/'):
             video_id = _parse_video_id(path)
@@ -227,7 +232,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
                 self._handle_get_meta(video_id)
                 return
             if len(parts) >= 4 and parts[3] == 'events':
-                self._handle_get_video_events(video_id)
+                self._handle_get_video_events(video_id, qs)
                 return
             # check for /file sub-path
 
@@ -330,12 +335,52 @@ class _ApiHandler(BaseHTTPRequestHandler):
             return
         _success_response(self, v)
 
-    def _handle_get_video_events(self, video_id: str) -> None:
+    def _parse_optional_int(self, raw: str, field_name: str) -> int | None:
+        if not raw:
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            _error_response(self, f'Invalid {field_name}', status=400)
+            return None
+
+    def _handle_list_video_events(self, qs: dict[str, list[str]]) -> None:
+        video_id = (qs.get('video_id') or [''])[0].strip()
+        task_id_raw = (qs.get('task_id') or [''])[0].strip()
+        task_id = self._parse_optional_int(task_id_raw, 'task_id')
+        if task_id_raw and task_id is None:
+            return
+        limit = int((qs.get('limit') or ['100'])[0] or 100)
+        offset = int((qs.get('offset') or ['0'])[0] or 0)
+        db_path = settings.discovery_db_path.resolve()
+        _success_response(self, {
+            'items': list_video_events(db_path, video_id, task_id=task_id, limit=limit, offset=offset),
+            'total': count_video_events(db_path, video_id, task_id=task_id),
+            'limit': limit,
+            'offset': offset,
+            'video_id': video_id,
+            'task_id': task_id,
+        })
+
+    def _handle_get_video_events(self, video_id: str, qs: dict[str, list[str]]) -> None:
         db_path = settings.discovery_db_path.resolve()
         if get_video_by_id(db_path, video_id) is None:
             _error_response(self, 'Video not found', status=404)
             return
-        _success_response(self, {'items': list_video_events(db_path, video_id), 'video_id': video_id})
+        task_id_raw = (qs.get('task_id') or [''])[0].strip()
+        task_id = self._parse_optional_int(task_id_raw, 'task_id')
+        if task_id_raw and task_id is None:
+            return
+        limit = int((qs.get('limit') or ['100'])[0] or 100)
+        offset = int((qs.get('offset') or ['0'])[0] or 0)
+        _success_response(self, {
+            'items': list_video_events(db_path, video_id, task_id=task_id, limit=limit, offset=offset),
+            'total': count_video_events(db_path, video_id, task_id=task_id),
+            'limit': limit,
+            'offset': offset,
+            'video_id': video_id,
+            'task_id': task_id,
+        })
 
     def _handle_get_file(self, video_id: str, file_type: str) -> None:
         db_path = settings.discovery_db_path.resolve()
