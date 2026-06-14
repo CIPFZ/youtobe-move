@@ -19,6 +19,10 @@ def test_repository_schema_and_status_flow(tmp_path):
     assert "language_hint" not in columns
     assert "comment_count" not in columns
     assert "like_count" not in columns
+    assert "task_id" in columns
+    assert "download_progress" in columns
+    assert "download_attempts" in columns
+    assert "last_error_at" in columns
 
     item = VideoCandidate(
         video_id="abc123def45",
@@ -39,8 +43,8 @@ def test_repository_schema_and_status_flow(tmp_path):
     pending = repo.get_pending_downloads(db_path, min_score=5.0)
     assert [row["video_id"] for row in pending] == ["abc123def45"]
 
-    repo.mark_downloading(db_path, "abc123def45")
-    repo.mark_downloaded(db_path, "abc123def45", "/tmp/video-dir", 123, "/tmp/thumb.jpg", "/tmp/meta.json")
+    repo.mark_downloading(db_path, "abc123def45", task_id=42)
+    repo.mark_downloaded(db_path, "abc123def45", "/tmp/video-dir", 123, "/tmp/thumb.jpg", "/tmp/meta.json", task_id=42)
 
     downloaded = repo.get_video_by_id(db_path, "abc123def45")
     assert downloaded["status"] == "downloaded"
@@ -49,12 +53,19 @@ def test_repository_schema_and_status_flow(tmp_path):
     assert downloaded["file_path"] == "/tmp/video-dir"
     assert downloaded["thumbnail_path"] == "/tmp/thumb.jpg"
     assert downloaded["meta_path"] == "/tmp/meta.json"
+    assert downloaded["task_id"] == 42
+    assert downloaded["download_progress"] == 100
+    assert downloaded["download_attempts"] == 1
 
     repo.mark_pulled(db_path, "abc123def45")
     pulled = repo.get_video_by_id(db_path, "abc123def45")
     assert pulled["status"] == "pulled"
     assert pulled["file_dir"] == ""
     assert pulled["file_size"] == 0
+
+    events = repo.list_video_events(db_path, "abc123def45")
+    assert [event["event_type"] for event in events] == ["downloading", "downloaded", "pulled"]
+    assert events[0]["task_id"] == 42
 
 
 def test_repository_list_filters_by_status_category_and_score(tmp_path):

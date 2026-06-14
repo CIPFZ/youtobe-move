@@ -61,6 +61,8 @@ curl -s -X POST http://127.0.0.1:8503/api/discovery/run
 
 ```bash
 curl -s http://127.0.0.1:8503/api/tasks/<task_id>
+curl -s -X POST http://127.0.0.1:8503/api/tasks/<task_id>/cancel
+curl -s -X POST http://127.0.0.1:8503/api/tasks/<task_id>/retry
 ```
 
 ## Manual Download Smoke
@@ -80,6 +82,7 @@ curl -s -X POST http://127.0.0.1:8503/api/downloads \
   -H "Content-Type: application/json" \
   -d '{"url":"https://www.youtube.com/watch?v=VIDEO_ID_HERE","category":"manual"}'
 curl -s http://127.0.0.1:8503/api/tasks
+curl -s http://127.0.0.1:8503/api/videos/VIDEO_ID_HERE/events
 ```
 
 ## Disk And Log Checks

@@ -14,11 +14,19 @@ from app.discovery.repository import (
     get_storage_stats,
     get_video_by_id,
     init_db,
+    list_video_events,
     list_videos,
     mark_pulled,
 )
 from app.settings import settings
-from app.task_state import finish_task, get_task_state, record_task_event, try_start_task
+from app.task_state import (
+    finish_task,
+    get_current_task_id,
+    get_task_state,
+    is_current_task_cancel_requested,
+    record_task_event,
+    try_start_task,
+)
 from app.tasks import (
     count_tasks,
     get_task,
@@ -26,6 +34,7 @@ from app.tasks import (
     list_task_events,
     list_tasks,
     recover_interrupted_tasks,
+    request_cancel,
 )
 
 logger = logging.getLogger(__name__)
@@ -224,6 +233,9 @@ class _ApiHandler(BaseHTTPRequestHandler):
             if len(parts) >= 4 and parts[3] == 'meta':
                 self._handle_get_meta(video_id)
                 return
+            if len(parts) >= 4 and parts[3] == 'events':
+                self._handle_get_video_events(video_id)
+                return
             # check for /file sub-path
 
             if len(parts) >= 4 and parts[3] == 'file':
@@ -272,6 +284,19 @@ class _ApiHandler(BaseHTTPRequestHandler):
             self._handle_post_download()
             return
 
+        if path.startswith('/api/tasks/'):
+            task_id = _parse_task_id(path)
+            parts = [p for p in path.split('/') if p]
+            if task_id is None or len(parts) < 4:
+                _error_response(self, 'Invalid task_id', status=400)
+                return
+            if parts[3] == 'cancel':
+                self._handle_cancel_task(task_id)
+                return
+            if parts[3] == 'retry':
+                self._handle_retry_task(task_id)
+                return
+
         if path.startswith('/api/videos/'):
             video_id = _parse_video_id(path)
             parts = [p for p in path.split('/') if p]
@@ -311,6 +336,13 @@ class _ApiHandler(BaseHTTPRequestHandler):
             _error_response(self, 'Video not found', status=404)
             return
         _success_response(self, v)
+
+    def _handle_get_video_events(self, video_id: str) -> None:
+        db_path = settings.discovery_db_path.resolve()
+        if get_video_by_id(db_path, video_id) is None:
+            _error_response(self, 'Video not found', status=404)
+            return
+        _success_response(self, {'items': list_video_events(db_path, video_id), 'video_id': video_id})
 
     def _handle_get_file(self, video_id: str, file_type: str) -> None:
         db_path = settings.discovery_db_path.resolve()
@@ -477,6 +509,38 @@ class _ApiHandler(BaseHTTPRequestHandler):
         task['events'] = list_task_events(db_path, task_id)
         _success_response(self, task)
 
+    def _handle_cancel_task(self, task_id: int) -> None:
+        db_path = settings.discovery_db_path.resolve()
+        task = request_cancel(db_path, task_id)
+        if task is None:
+            _error_response(self, 'Task not found', status=404)
+            return
+        _success_response(self, task)
+
+    def _handle_retry_task(self, task_id: int) -> None:
+        db_path = settings.discovery_db_path.resolve()
+        old_task = get_task(db_path, task_id)
+        if old_task is None:
+            _error_response(self, 'Task not found', status=404)
+            return
+
+        input_data = dict(old_task.get('input') or {})
+        input_data['retry_of'] = task_id
+        task_name = str(old_task.get('task_name') or '')
+        if task_name == 'discovery_download':
+            self._start_discovery_task(input_data=input_data)
+            return
+        if task_name == 'manual_download':
+            url = str(input_data.get('url') or '').strip()
+            category = str(input_data.get('category') or 'manual').strip()
+            vid = str(input_data.get('video_id') or _extract_youtube_video_id(url)).strip()
+            if not url or not vid:
+                _error_response(self, 'Original manual download task has invalid input', status=400)
+                return
+            self._start_manual_download(url=url, category=category, vid=vid, input_data=input_data)
+            return
+        _error_response(self, f'Task type is not retryable: {task_name}', status=400)
+
     def _handle_stats(self) -> None:
         db_path = settings.discovery_db_path.resolve()
         stats = get_storage_stats(db_path)
@@ -484,7 +548,10 @@ class _ApiHandler(BaseHTTPRequestHandler):
 
     def _handle_trigger_discovery(self) -> None:
         """Start discovery+download in a background thread, return immediately."""
-        task = try_start_task('discovery_download')
+        self._start_discovery_task()
+
+    def _start_discovery_task(self, input_data: dict[str, object] | None = None) -> None:
+        task = try_start_task('discovery_download', input_data=input_data)
         if task is None:
             _error_response(
                 self,
@@ -544,7 +611,22 @@ class _ApiHandler(BaseHTTPRequestHandler):
             _error_response(self, 'Could not extract a valid YouTube video_id from url', status=400)
             return
 
-        task = try_start_task('manual_download', input_data={'url': url, 'category': category, 'video_id': vid})
+        self._start_manual_download(
+            url=url,
+            category=category,
+            vid=vid,
+            input_data={'url': url, 'category': category, 'video_id': vid},
+        )
+
+    def _start_manual_download(
+        self,
+        *,
+        url: str,
+        category: str,
+        vid: str,
+        input_data: dict[str, object],
+    ) -> None:
+        task = try_start_task('manual_download', input_data=input_data)
         if task is None:
             _error_response(
                 self,
@@ -567,6 +649,15 @@ class _ApiHandler(BaseHTTPRequestHandler):
                 db_path = settings.discovery_db_path.resolve()
                 media_root = settings.download_media_dir.resolve()
                 init_db(db_path)
+                task_id = get_current_task_id()
+
+                if is_current_task_cancel_requested():
+                    summary['cancelled'] = True
+                    record_task_event('manual_download_cancelled', f'Manual download cancelled before start: {vid}', {
+                        'video_id': vid,
+                    })
+                    finish_task(summary=summary)
+                    return
 
                 out_dir = media_root / category / vid
                 out_dir.mkdir(parents=True, exist_ok=True)
@@ -578,7 +669,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
 
                 # ensure DB row exists (for manual downloads that skip discovery)
                 ensure_video_row(db_path, vid, url, category)
-                mark_downloading(db_path, vid)
+                mark_downloading(db_path, vid, task_id=task_id)
 
                 result = download_media(
                     url=url,
@@ -597,6 +688,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
                     total_size,
                     thumbnail_path=str(result.get('thumbnail_path') or ''),
                     meta_path=str(out_dir / f'{vid}.video_info.json'),
+                    task_id=task_id,
                 )
                 summary['downloaded'] = True
                 summary['file_size'] = total_size
@@ -615,7 +707,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 try:
                     from app.discovery.repository import mark_download_failed
-                    mark_download_failed(settings.discovery_db_path.resolve(), vid, str(exc))
+                    mark_download_failed(settings.discovery_db_path.resolve(), vid, str(exc), task_id=get_current_task_id())
                 except Exception:
                     logger.exception('Manual download failure status update failed for %s', vid)
                 record_task_event('manual_download_failed', f'Manual download failed: {vid}', {

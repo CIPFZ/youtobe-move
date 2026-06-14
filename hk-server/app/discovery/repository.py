@@ -12,6 +12,16 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _existing_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return {str(row[1]) for row in rows}
+
+
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    if column not in _existing_columns(conn, table):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
@@ -39,14 +49,94 @@ def init_db(db_path: Path) -> None:
                 pulled_at TEXT NOT NULL DEFAULT '',
                 expired_at TEXT NOT NULL DEFAULT '',
                 error TEXT NOT NULL DEFAULT '',
+                task_id INTEGER,
+                download_progress REAL NOT NULL DEFAULT 0,
+                download_attempts INTEGER NOT NULL DEFAULT 0,
+                last_error_at TEXT NOT NULL DEFAULT '',
                 raw_json TEXT NOT NULL DEFAULT '{}'
             )
             """
         )
+        _add_column_if_missing(conn, 'videos', 'task_id', 'INTEGER')
+        _add_column_if_missing(conn, 'videos', 'download_progress', 'REAL NOT NULL DEFAULT 0')
+        _add_column_if_missing(conn, 'videos', 'download_attempts', 'INTEGER NOT NULL DEFAULT 0')
+        _add_column_if_missing(conn, 'videos', 'last_error_at', "TEXT NOT NULL DEFAULT ''")
         conn.execute('CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_videos_category ON videos(category)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_videos_score ON videos(score DESC)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_videos_discovered_at ON videos(discovered_at DESC)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_videos_task_id ON videos(task_id)')
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS video_events (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id TEXT NOT NULL,
+                task_id INTEGER,
+                event_type TEXT NOT NULL,
+                message TEXT NOT NULL DEFAULT '',
+                data_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_video_events_video_id ON video_events(video_id, created_at DESC)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_video_events_task_id ON video_events(task_id, created_at DESC)')
+
+
+def _json_dumps(value: Any) -> str:
+    import json
+
+    return json.dumps(value or {}, ensure_ascii=False, default=str)
+
+
+def _json_loads(value: str) -> Any:
+    import json
+
+    try:
+        return json.loads(value or '{}')
+    except json.JSONDecodeError:
+        return {}
+
+
+def add_video_event(
+    db_path: Path,
+    video_id: str,
+    event_type: str,
+    message: str = '',
+    data: dict[str, Any] | None = None,
+    task_id: int | None = None,
+) -> None:
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO video_events (video_id, task_id, event_type, message, data_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (video_id, task_id, event_type, str(message or '')[:2000], _json_dumps(data), _now()),
+        )
+
+
+def list_video_events(db_path: Path, video_id: str, limit: int = 100) -> list[dict[str, Any]]:
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT event_id, video_id, task_id, event_type, message, data_json, created_at
+            FROM video_events
+            WHERE video_id=?
+            ORDER BY event_id ASC
+            LIMIT ?
+            """,
+            (video_id, max(1, min(int(limit), 500))),
+        ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        item['data'] = _json_loads(item.pop('data_json', '{}'))
+        out.append(item)
+    return out
 
 
 def upsert_candidates(db_path: Path, items: list[VideoCandidate]) -> int:
@@ -110,12 +200,18 @@ def get_pending_downloads(db_path: Path, limit: int = 10, min_score: float = 0.0
     return [dict(r) for r in rows]
 
 
-def mark_downloading(db_path: Path, video_id: str) -> None:
+def mark_downloading(db_path: Path, video_id: str, task_id: int | None = None) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE videos SET status='downloading' WHERE video_id=?",
-            (video_id,),
+            """
+            UPDATE videos
+            SET status='downloading', task_id=COALESCE(?, task_id),
+                download_progress=0, download_attempts=download_attempts + 1
+            WHERE video_id=?
+            """,
+            (task_id, video_id),
         )
+    add_video_event(db_path, video_id, 'downloading', 'Download started', task_id=task_id)
 
 
 def ensure_video_row(db_path: Path, video_id: str, url: str, category: str) -> None:
@@ -138,6 +234,7 @@ def mark_downloaded(
     file_size: int,
     thumbnail_path: str = '',
     meta_path: str = '',
+    task_id: int | None = None,
 ) -> None:
     now = _now()
     with sqlite3.connect(db_path) as conn:
@@ -145,37 +242,48 @@ def mark_downloaded(
             """
             UPDATE videos
             SET status='downloaded', file_dir=?, file_size=?, thumbnail_path=?,
-                meta_path=?, downloaded_at=?, error=''
+                meta_path=?, downloaded_at=?, error='', task_id=COALESCE(?, task_id),
+                download_progress=100
             WHERE video_id=?
             """,
-            (file_dir, file_size, thumbnail_path, meta_path, now, video_id),
+            (file_dir, file_size, thumbnail_path, meta_path, now, task_id, video_id),
         )
+    add_video_event(db_path, video_id, 'downloaded', 'Download finished', {'file_size': file_size}, task_id=task_id)
 
 
-def mark_download_failed(db_path: Path, video_id: str, error: str) -> None:
+def mark_download_failed(db_path: Path, video_id: str, error: str, task_id: int | None = None) -> None:
+    now = _now()
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE videos SET status='failed', error=? WHERE video_id=?",
-            (str(error)[:2000], video_id),
+            """
+            UPDATE videos
+            SET status='failed', error=?, task_id=COALESCE(?, task_id),
+                last_error_at=?, download_progress=0
+            WHERE video_id=?
+            """,
+            (str(error)[:2000], task_id, now, video_id),
         )
+    add_video_event(db_path, video_id, 'failed', str(error)[:2000], {'error': str(error)}, task_id=task_id)
 
 
-def mark_pulled(db_path: Path, video_id: str) -> None:
+def mark_pulled(db_path: Path, video_id: str, task_id: int | None = None) -> None:
     now = _now()
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             "UPDATE videos SET status='pulled', file_dir='', file_size=0, pulled_at=? WHERE video_id=?",
             (now, video_id),
         )
+    add_video_event(db_path, video_id, 'pulled', 'Video pulled by local server', task_id=task_id)
 
 
-def mark_expired(db_path: Path, video_id: str) -> None:
+def mark_expired(db_path: Path, video_id: str, task_id: int | None = None) -> None:
     now = _now()
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             "UPDATE videos SET status='expired', file_dir='', file_size=0, expired_at=? WHERE video_id=?",
             (now, video_id),
         )
+    add_video_event(db_path, video_id, 'expired', 'Video files expired or were force deleted', task_id=task_id)
 
 
 def get_downloaded_oldest(db_path: Path, limit: int = 50) -> list[dict[str, Any]]:
@@ -225,6 +333,7 @@ def _video_select_sql() -> str:
     SELECT video_id, url, title, channel_title, published_at, duration_sec,
            view_count, keyword, category, score, status, status AS download_status,
            file_dir, file_dir AS file_path, file_size, thumbnail_path, meta_path,
+           task_id, download_progress, download_attempts, last_error_at,
            downloaded_at, pulled_at, expired_at, error, error AS download_error,
            discovered_at, raw_json
     FROM videos

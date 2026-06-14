@@ -92,9 +92,12 @@ JSON API 错误响应统一为：
 | GET | `/api/health` | 健康检查 |
 | GET | `/api/tasks?status=&type=&limit=&offset=` | 任务列表 |
 | GET | `/api/tasks/<id>` | 任务详情和事件 |
+| POST | `/api/tasks/<id>/cancel` | 请求取消任务，下载中会在阶段边界停止 |
+| POST | `/api/tasks/<id>/retry` | 基于原任务 input 创建重试任务 |
 | GET | `/api/videos?status=downloaded` | 待拉取列表；推荐查询参数 |
 | GET | `/api/videos?download_status=downloaded` | 旧查询参数，兼容别名 |
 | GET | `/api/videos/<id>` | 视频详情 |
+| GET | `/api/videos/<id>/events` | 视频级事件 |
 | GET | `/api/videos/<id>/meta` | 完整 .video_info.json |
 | GET | `/api/videos/<id>/file?type=video` | 下载视频流(.mp4) |
 | GET | `/api/videos/<id>/file?type=audio` | 下载音频流(.m4a) |
@@ -152,6 +155,7 @@ Stage 3 已删除配置：
 videos.status
 tasks.status
 task_events
+video_events
 ```
 
 状态集合：

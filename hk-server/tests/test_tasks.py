@@ -48,3 +48,19 @@ def test_recover_interrupted_tasks_marks_active_tasks_failed(tmp_path):
     with sqlite3.connect(db_path) as conn:
         row = conn.execute("SELECT event_type FROM task_events WHERE task_id=? ORDER BY event_id DESC LIMIT 1", (task["task_id"],)).fetchone()
     assert row[0] == "failed"
+
+
+def test_request_cancel_marks_active_task_and_finish_becomes_cancelled(tmp_path):
+    db_path = tmp_path / "tasks.db"
+    task = tasks.start_task(db_path, "manual_download")
+    assert task is not None
+
+    cancelled = tasks.request_cancel(db_path, task["task_id"])
+
+    assert cancelled["status"] == "cancel_requested"
+    assert tasks.is_cancel_requested(db_path, task["task_id"])
+
+    tasks.finish_task(db_path, task["task_id"], summary={"cancelled": True})
+    finished = tasks.get_task(db_path, task["task_id"])
+    assert finished["status"] == "cancelled"
+    assert tasks.get_running_task(db_path) is None

@@ -23,7 +23,13 @@ from app.discovery.service import discovery_keywords, run_discovery_once
 from app.disk_cleaner import cleanup_if_needed
 from app.downloader import download_media
 from app.settings import settings
-from app.task_state import finish_task, record_task_event, try_start_task
+from app.task_state import (
+    finish_task,
+    get_current_task_id,
+    is_current_task_cancel_requested,
+    record_task_event,
+    try_start_task,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -147,15 +153,22 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
 
     summary: dict[str, Any] = {
         "discovered": 0, "persisted": 0, "downloaded": 0,
-        "failed": 0, "expired": 0, "cached": False,
+        "failed": 0, "expired": 0, "cached": False, "cancelled": False,
     }
 
     try:
         db_path = settings.discovery_db_path.resolve()
         init_db(db_path)
+        task_id = get_current_task_id()
         top_n = settings.discovery_top_n
         cache_context = _cache_context()
         record_task_event("discovery_started", "Discovery and download cycle started")
+
+        if is_current_task_cancel_requested():
+            summary["cancelled"] = True
+            record_task_event("cancelled", "Task cancelled before discovery")
+            finish_task(summary=summary)
+            return summary
 
         # 1. Discovery — cache-first
         cached_raw, fresh = _load_cache(cache_context)
@@ -179,6 +192,12 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
                 _save_cache(_candidates_to_dicts(raw), cache_context)
 
         # 2. Persist selected to DB
+        if is_current_task_cancel_requested():
+            summary["cancelled"] = True
+            record_task_event("cancelled", "Task cancelled after discovery")
+            finish_task(summary=summary)
+            return summary
+
         if selected:
             count = upsert_candidates(db_path, selected)
             summary["persisted"] = count
@@ -194,6 +213,11 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
         interval = settings.download_interval_sec
 
         for i, p in enumerate(pending):
+            if is_current_task_cancel_requested():
+                summary["cancelled"] = True
+                record_task_event("cancelled", "Task cancelled before next download", summary)
+                break
+
             vid = p["video_id"]
             url = p["url"]
             category = p.get("category", "uncategorised") or "uncategorised"
@@ -202,7 +226,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
 
             logger.info("Downloading %s category=%s -> %s", vid, category, out_dir)
             record_task_event("download_started", f"Downloading {vid}", {"video_id": vid, "category": category})
-            mark_downloading(db_path, vid)
+            mark_downloading(db_path, vid, task_id=task_id)
 
             try:
                 result = download_media(
@@ -220,6 +244,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
                     total_size,
                     thumbnail_path=str(result.get('thumbnail_path') or ''),
                     meta_path=str(out_dir / f'{vid}.video_info.json'),
+                    task_id=task_id,
                 )
                 summary["downloaded"] += 1
                 record_task_event("downloaded", f"Downloaded {vid}", {"video_id": vid, "file_size": total_size})
@@ -230,7 +255,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
                         shutil.rmtree(out_dir)
                     except OSError:
                         pass
-                mark_download_failed(db_path, vid, str(exc))
+                mark_download_failed(db_path, vid, str(exc), task_id=task_id)
                 summary["failed"] += 1
                 record_task_event("download_failed", f"Download failed: {vid}", {"video_id": vid, "error": str(exc)})
                 logger.warning("Download failed: %s err=%s", vid, exc)

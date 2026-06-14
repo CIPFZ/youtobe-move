@@ -78,11 +78,13 @@ GET  /api/stats
 
 ## 3. V2：任务化和可观测
 
-当前状态：第一批已实施。已新增 `app/tasks.py`，在 SQLite 中创建 `tasks`
+当前状态：第二批已实施。已新增 `app/tasks.py`，在 SQLite 中创建 `tasks`
 和 `task_events`；`POST /api/discovery/run`、`POST /api/downloads` 返回
 `task_id`；`GET /api/tasks` 返回分页任务列表，`GET /api/tasks/<id>` 返回
 任务详情和事件；服务启动时会把遗留 `pending/running` 任务标记为失败以完成重启恢复。
-取消、重试、下载进度和视频级事件作为下一批继续实现。
+`POST /api/tasks/<id>/cancel`、`POST /api/tasks/<id>/retry`、`GET /api/videos/<id>/events`
+已实现；`videos` 已记录 `task_id`、`download_attempts`、`last_error_at`、`download_progress`。
+下载中实时进度作为下一批继续实现。
 
 ### 3.1 目标
 
@@ -96,9 +98,9 @@ V2 把后台行为从“临时线程 + 日志”升级为“可查询任务系�
 - discovery 任务记录。已完成第一批。
 - 单 URL 下载任务记录。已完成第一批。
 - 最近任务列表和详情 API。已完成第一批。
-- 每个视频下载进度和错误记录。下一批。
-- 任务重试接口。下一批。
-- 任务取消标记。下一批。
+- 每个视频下载进度和错误记录。已完成基础字段和失败记录，实时进度下一批。
+- 任务重试接口。已完成。
+- 任务取消标记。已完成阶段边界取消。
 
 ### 3.3 建议 schema
 
@@ -133,7 +135,7 @@ CREATE TABLE task_events (
 );
 ```
 
-后续可新增或扩展 `video_events`：
+当前第二批新增 `video_events`：
 
 ```sql
 CREATE TABLE video_events (
@@ -146,7 +148,7 @@ CREATE TABLE video_events (
 );
 ```
 
-可选扩展 `videos`：
+当前第二批扩展 `videos`：
 
 ```text
 task_id
@@ -176,8 +178,7 @@ POST /api/tasks/<id>/cancel
 GET  /api/videos/<id>/events
 ```
 
-当前第一批已实现 `GET /api/tasks` 和 `GET /api/tasks/<id>`；retry、cancel
-和 video events 留到下一批。
+当前已实现 `GET /api/tasks`、`GET /api/tasks/<id>`、retry、cancel 和 video events。
 
 V1 的：
 

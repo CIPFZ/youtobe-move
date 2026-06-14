@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
+ACTIVE_STATUSES = ("pending", "running", "cancel_requested")
 RUNNING_STATUSES = ("pending", "running")
 
 
@@ -76,10 +77,10 @@ def start_task(db_path: Path, task_name: str, input_data: dict[str, Any] | None 
     with sqlite3.connect(db_path, timeout=30) as conn:
         conn.row_factory = sqlite3.Row
         conn.execute("BEGIN IMMEDIATE")
-        running = conn.execute(
-            "SELECT task_id FROM tasks WHERE status IN ('pending', 'running') LIMIT 1"
+        active = conn.execute(
+            "SELECT task_id FROM tasks WHERE status IN ('pending', 'running', 'cancel_requested') LIMIT 1"
         ).fetchone()
-        if running is not None:
+        if active is not None:
             conn.rollback()
             return None
         cur = conn.execute(
@@ -110,8 +111,12 @@ def finish_task(
 ) -> None:
     init_task_db(db_path)
     now = _now()
-    status = "failed" if error else "success"
     with sqlite3.connect(db_path) as conn:
+        row = conn.execute("SELECT status FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+        current_status = str(row[0]) if row else ""
+        status = "failed" if error else "cancelled" if current_status == "cancel_requested" else "success"
+        event_type = "failed" if error else "cancelled" if status == "cancelled" else "finished"
+        message = str(error or ("Task cancelled" if status == "cancelled" else "Task finished"))[:2000]
         conn.execute(
             """
             UPDATE tasks
@@ -127,8 +132,8 @@ def finish_task(
             """,
             (
                 task_id,
-                "failed" if error else "finished",
-                str(error or "Task finished")[:2000],
+                event_type,
+                message,
                 _json_dumps(summary),
                 now,
             ),
@@ -158,7 +163,7 @@ def get_running_task(db_path: Path) -> dict[str, Any] | None:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT * FROM tasks WHERE status IN ('pending', 'running') ORDER BY task_id DESC LIMIT 1"
+            "SELECT * FROM tasks WHERE status IN ('pending', 'running', 'cancel_requested') ORDER BY task_id DESC LIMIT 1"
         ).fetchone()
     return _task_from_row(row) if row else None
 
@@ -219,6 +224,39 @@ def get_task(db_path: Path, task_id: int) -> dict[str, Any] | None:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM tasks WHERE task_id=?", (task_id,)).fetchone()
     return _task_from_row(row) if row else None
+
+
+def request_cancel(db_path: Path, task_id: int) -> dict[str, Any] | None:
+    init_task_db(db_path)
+    now = _now()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+        if row is None:
+            return None
+        task = _task_from_row(row)
+        if task["status"] in ("pending", "running"):
+            conn.execute(
+                "UPDATE tasks SET status='cancel_requested' WHERE task_id=?",
+                (task_id,),
+            )
+            conn.execute(
+                """
+                INSERT INTO task_events (task_id, event_type, message, created_at)
+                VALUES (?, 'cancel_requested', 'Task cancellation requested', ?)
+                """,
+                (task_id, now),
+            )
+            row = conn.execute("SELECT * FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+            return _task_from_row(row)
+        return task
+
+
+def is_cancel_requested(db_path: Path, task_id: int) -> bool:
+    init_task_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute("SELECT status FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+    return bool(row and str(row[0]) == "cancel_requested")
 
 
 def list_task_events(db_path: Path, task_id: int) -> list[dict[str, Any]]:

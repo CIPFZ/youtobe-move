@@ -465,13 +465,15 @@ downloaded -> expired
 - 统一 JSON 响应 envelope。
 - 健康检查 `/api/health`。
 - 持久化任务记录 `/api/tasks` 和任务事件 `task_events`。
+- 任务取消和重试 API。
+- 视频级事件 `video_events`。
 - 拉取确认和管理员强制删除分离。
 - 离线 pytest 覆盖 repository、scoring、disk_cleaner、API helper 和 task_state。
 - 部署后 smoke、systemd 示例和日志轮转建议文档。
 
 ### 部分具备但需要校正
 
-- 任务取消、重试和下载进度仍未完成；当前已支持任务持久记录、列表、详情和启动时中断任务恢复。
+- 下载中细粒度进度仍未完成；当前已支持任务持久记录、列表、详情、取消、重试、视频事件和启动时中断任务恢复。
 - yt-dlp 搜索 provider 仍只有一个，搜索质量和字段完整度有限。
 
 ### 当前不具备

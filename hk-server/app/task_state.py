@@ -7,6 +7,7 @@ from app.tasks import (
     get_latest_finished_task,
     get_running_task,
     init_task_db,
+    is_cancel_requested,
     record_task_event as record_persisted_task_event,
     start_task,
 )
@@ -51,6 +52,21 @@ def record_task_event(event_type: str, message: str = "", data: dict[str, Any] |
         task_id = int(running["task_id"]) if running else None
     if task_id is not None:
         record_persisted_task_event(db_path, task_id, event_type, message, data)
+
+
+def get_current_task_id() -> int | None:
+    task_id = _current_task_id
+    if task_id is not None:
+        return task_id
+    running = get_running_task(settings.discovery_db_path.resolve())
+    return int(running["task_id"]) if running else None
+
+
+def is_current_task_cancel_requested() -> bool:
+    task_id = get_current_task_id()
+    if task_id is None:
+        return False
+    return is_cancel_requested(settings.discovery_db_path.resolve(), task_id)
 
 
 def get_task_state() -> dict[str, Any]:

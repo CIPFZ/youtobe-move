@@ -565,12 +565,22 @@ hk-server/tests/
 - discovery/download 主流程写入任务事件。
 - API 服务启动时将遗留 `pending/running` 任务标记为失败，避免重启后任务状态悬挂。
 
+### V2 第二批：取消、重试和视频事件
+
+当前状态：已实施。完成内容：
+
+- `POST /api/tasks/<id>/cancel`，支持阶段边界取消。
+- `POST /api/tasks/<id>/retry`，基于原任务 `input` 创建新任务。
+- SQLite 新增 `video_events` 表。
+- `GET /api/videos/<id>/events` 返回视频级事件。
+- `videos` 增加 `task_id`、`download_attempts`、`last_error_at`、`download_progress`。
+- 下载状态流转会写入 `video_events`。
+
 下一批建议继续：
 
-1. `POST /api/tasks/<id>/cancel`，先实现阶段边界取消。
-2. `POST /api/tasks/<id>/retry`，基于原任务 `input` 创建新任务。
-3. `video_events`，记录视频级 discovered/downloading/downloaded/failed/pulled/expired。
-4. `videos` 增加 `task_id`、`download_attempts`、`last_error_at`、`download_progress`。
+1. 给 `downloader.py` 接入 yt-dlp progress hook，写入实时 `download_progress`。
+2. 将手动下载后台编排从 `api.py` 抽到 service 层。
+3. 视需要补 `video_events` 的分页和按 `task_id` 查询。
 
 ### 第 1 批：稳定性最小闭环
 
