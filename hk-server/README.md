@@ -16,7 +16,10 @@ hk-server (常驻进程 :8503)
 ├── GET  /api/videos/<id>   — 视频详情
 ├── GET  /api/videos/<id>/meta  — 完整元信息 JSON
 ├── GET  /api/videos/<id>/file?type=video|audio|thumbnail — 流式下载
+├── POST /api/videos/<id>/pull-lock — 本地端拉取前加锁
+├── POST /api/videos/<id>/release-pull-lock — 本地端拉取失败释放锁
 ├── POST /api/videos/<id>/confirm-pulled — 确认拉取，服务器删除
+├── POST /api/videos/<id>/mark-published — 本地端发布成功回写
 ├── GET  /api/stats         — 存储统计
 ├── POST /api/discovery/preview — 只搜索评分，不保存不下载
 ├── POST /api/discovery/run — 手动触发发现下载
@@ -104,7 +107,10 @@ JSON API 错误响应统一为：
 | GET | `/api/videos/<id>/file?type=video` | 下载视频流(.mp4) |
 | GET | `/api/videos/<id>/file?type=audio` | 下载音频流(.m4a) |
 | GET | `/api/videos/<id>/file?type=thumbnail` | 下载封面图 |
+| POST | `/api/videos/<id>/pull-lock` | 拉取前锁定视频，状态变为 pulling |
+| POST | `/api/videos/<id>/release-pull-lock` | 拉取失败释放锁，状态回到 downloaded |
 | POST | `/api/videos/<id>/confirm-pulled` | 确认拉取，删除服务器文件并标记 pulled |
+| POST | `/api/videos/<id>/mark-published` | 本地发布成功后回写 published |
 | DELETE | `/api/videos/<id>/files` | 管理员强制删除服务器文件并标记 expired |
 | GET | `/api/stats` | 存储统计 |
 | POST | `/api/discovery/preview` | 只搜索评分，不保存不下载 |
@@ -136,6 +142,7 @@ JSON API 错误响应统一为：
 | DISCOVERY_DB_PATH | runtime/discovery/discovery.db | SQLite 路径 |
 | DISK_MAX_STORAGE_GB | 50 | 存储上限 |
 | DISK_MAX_RETENTION_DAYS | 7 | 保留天数 |
+| PULL_LOCK_TTL_MINUTES | 120 | 本地端拉取锁有效期 |
 | DOWNLOAD_INTERVAL_SEC | 180 | 下载间隔 |
 | API_PORT | 8503 | 端口 |
 

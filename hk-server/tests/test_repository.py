@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 from app.discovery.models import VideoCandidate
 from app.discovery import repository as repo
@@ -112,3 +113,42 @@ def test_repository_list_filters_by_status_category_and_score(tmp_path):
 
     assert len(rows) == 1
     assert rows[0]["video_id"] == "v2"
+
+
+def test_pull_lock_release_expiry_and_published_flow(tmp_path):
+    db_path = tmp_path / "discovery.db"
+    repo.init_db(db_path)
+    repo.ensure_video_row(db_path, "lockvid1234", "https://youtube.com/watch?v=lockvid1234", "manual")
+    repo.mark_downloaded(db_path, "lockvid1234", "/tmp/lockvid1234", 10)
+
+    locked = repo.acquire_pull_lock(db_path, "lockvid1234", locked_by="local-a", ttl_minutes=30)
+    assert locked["status"] == "pulling"
+    assert locked["pull_locked_by"] == "local-a"
+    assert locked["pull_lock_expires_at"]
+
+    conflict = repo.acquire_pull_lock(db_path, "lockvid1234", locked_by="local-b", ttl_minutes=30)
+    assert conflict["status"] == "pulling"
+    assert conflict["pull_locked_by"] == "local-a"
+
+    still_locked = repo.release_pull_lock(db_path, "lockvid1234", locked_by="local-b")
+    assert still_locked["status"] == "pulling"
+    released = repo.release_pull_lock(db_path, "lockvid1234", locked_by="local-a")
+    assert released["status"] == "downloaded"
+    assert released["pull_locked_by"] == ""
+
+    repo.acquire_pull_lock(db_path, "lockvid1234", locked_by="local-a", ttl_minutes=30)
+    expired_at = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE videos SET pull_lock_expires_at=? WHERE video_id=?",
+            (expired_at, "lockvid1234"),
+        )
+    assert repo.reset_expired_pull_locks(db_path) == 1
+    expired = repo.get_video_by_id(db_path, "lockvid1234")
+    assert expired["status"] == "downloaded"
+    assert expired["pull_locked_by"] == ""
+
+    published = repo.mark_published(db_path, "lockvid1234", platform="bilibili", publish_ref="BV123")
+    assert published["status"] == "published"
+    assert published["publish_platform"] == "bilibili"
+    assert published["publish_ref"] == "BV123"

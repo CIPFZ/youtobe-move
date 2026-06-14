@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 from app.discovery.providers.base import UnsupportedProviderError
 from app.discovery.repository import (
+    acquire_pull_lock,
     count_video_events,
     count_videos,
     get_storage_stats,
@@ -18,7 +19,9 @@ from app.discovery.repository import (
     init_db,
     list_video_events,
     list_videos,
+    mark_published,
     mark_pulled,
+    release_pull_lock,
 )
 from app.settings import settings
 from app.task_state import finish_task, get_task_state, try_start_task
@@ -306,6 +309,15 @@ class _ApiHandler(BaseHTTPRequestHandler):
             if video_id and len(parts) >= 4 and parts[3] == 'confirm-pulled':
                 self._handle_confirm_pulled(video_id)
                 return
+            if video_id and len(parts) >= 4 and parts[3] == 'pull-lock':
+                self._handle_pull_lock(video_id)
+                return
+            if video_id and len(parts) >= 4 and parts[3] == 'release-pull-lock':
+                self._handle_release_pull_lock(video_id)
+                return
+            if video_id and len(parts) >= 4 and parts[3] == 'mark-published':
+                self._handle_mark_published(video_id)
+                return
 
         _error_response(self, 'Not found', status=404)
 
@@ -486,6 +498,71 @@ class _ApiHandler(BaseHTTPRequestHandler):
 
     def _handle_confirm_pulled(self, video_id: str) -> None:
         self._handle_delete_video(video_id, mark_as='pulled')
+
+    def _handle_pull_lock(self, video_id: str) -> None:
+        body, error = self._read_json_body()
+        if error:
+            _error_response(self, error, status=400)
+            return
+        locked_by = (str((body or {}).get('locked_by') or 'local').strip() or 'local')[:200]
+        ttl_raw = (body or {}).get('ttl_minutes', settings.pull_lock_ttl_minutes)
+        try:
+            ttl_minutes = int(ttl_raw)
+        except (TypeError, ValueError):
+            _error_response(self, 'Invalid ttl_minutes', status=400)
+            return
+
+        db_path = settings.discovery_db_path.resolve()
+        locked = acquire_pull_lock(db_path, video_id, locked_by=locked_by, ttl_minutes=ttl_minutes)
+        if locked is None:
+            _error_response(self, 'Video not found', status=404)
+            return
+        if locked.get('status') != 'pulling' or locked.get('pull_locked_by') != locked_by:
+            _error_response(
+                self,
+                'Video is not available for pulling',
+                status=409,
+                code='pull_lock_conflict',
+                details={'video': locked},
+            )
+            return
+        _success_response(self, locked)
+
+    def _handle_release_pull_lock(self, video_id: str) -> None:
+        body, error = self._read_json_body()
+        if error:
+            _error_response(self, error, status=400)
+            return
+        locked_by = str((body or {}).get('locked_by') or '').strip()[:200]
+        db_path = settings.discovery_db_path.resolve()
+        released = release_pull_lock(db_path, video_id, locked_by=locked_by)
+        if released is None:
+            _error_response(self, 'Video not found', status=404)
+            return
+        if released.get('status') == 'pulling':
+            _error_response(
+                self,
+                'Pull lock is owned by another client',
+                status=409,
+                code='pull_lock_conflict',
+                details={'video': released},
+            )
+            return
+        _success_response(self, released)
+
+    def _handle_mark_published(self, video_id: str) -> None:
+        body, error = self._read_json_body()
+        if error:
+            _error_response(self, error, status=400)
+            return
+        platform = str((body or {}).get('platform') or '').strip()
+        publish_ref = str((body or {}).get('publish_ref') or '').strip()
+        db_path = settings.discovery_db_path.resolve()
+        published = mark_published(db_path, video_id, platform=platform, publish_ref=publish_ref)
+        if published is None:
+            _error_response(self, 'Video not found', status=404)
+            return
+        _success_response(self, published)
 
     def _handle_health(self) -> None:
         db_path = settings.discovery_db_path.resolve()

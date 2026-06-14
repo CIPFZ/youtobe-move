@@ -298,7 +298,10 @@ Authorization: Bearer <API_TOKEN>
 | `GET` | `/api/videos/<id>/file?type=video` | 下载 `.mp4` 视频流 |
 | `GET` | `/api/videos/<id>/file?type=audio` | 下载 `.m4a` 音频流 |
 | `GET` | `/api/videos/<id>/file?type=thumbnail` | 下载封面图 |
+| `POST` | `/api/videos/<id>/pull-lock` | 拉取前锁定视频，状态变为 `pulling` |
+| `POST` | `/api/videos/<id>/release-pull-lock` | 拉取失败释放锁，状态回到 `downloaded` |
 | `POST` | `/api/videos/<id>/confirm-pulled` | 确认本地已拉取，删除磁盘目录并标记 `pulled` |
+| `POST` | `/api/videos/<id>/mark-published` | 本地发布成功后回写 `published` |
 | `DELETE` | `/api/videos/<id>/files` | 管理员强制删除磁盘目录并标记 `expired` |
 | `GET` | `/api/stats` | 查询统计 |
 | `POST` | `/api/discovery/preview` | 只搜索和评分，不写入 DB、不下载 |
@@ -404,6 +407,7 @@ downloaded -> expired
 | `YTDLP_AUDIO_FORMAT` | `bestaudio[ext=m4a]` | 音频流选择器 |
 | `DOWNLOAD_MEDIA_DIR` | `runtime/downloads` | 下载目录 |
 | `DOWNLOAD_INTERVAL_SEC` | `180` | 自动下载间隔 |
+| `PULL_LOCK_TTL_MINUTES` | `120` | 本地端拉取锁有效期 |
 
 ### 6.2 发现配置
 

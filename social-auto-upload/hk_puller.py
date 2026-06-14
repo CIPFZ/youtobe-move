@@ -194,6 +194,40 @@ def delete_hk_video(video_id: str) -> bool:
     return True
 
 
+def acquire_hk_pull_lock(video_id: str, locked_by: str = "social-auto-upload") -> dict[str, Any]:
+    """Acquire a HK-side pull lock before downloading files."""
+    url = f"{HK_SERVER_URL.rstrip('/')}/api/videos/{video_id}/pull-lock"
+    resp = _hk_session.post(
+        url,
+        headers={**_auth_headers(), "Content-Type": "application/json"},
+        data=json.dumps({"locked_by": locked_by}),
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = _unwrap_hk_data(resp.json(), f"/api/videos/{video_id}/pull-lock")
+    return data if isinstance(data, dict) else {}
+
+
+def release_hk_pull_lock(video_id: str, locked_by: str = "social-auto-upload") -> bool:
+    """Release a HK-side pull lock after a local download failure."""
+    url = f"{HK_SERVER_URL.rstrip('/')}/api/videos/{video_id}/release-pull-lock"
+    resp = _hk_session.post(
+        url,
+        headers={**_auth_headers(), "Content-Type": "application/json"},
+        data=json.dumps({"locked_by": locked_by}),
+        timeout=30,
+    )
+    if not 200 <= resp.status_code < 300:
+        return False
+    try:
+        payload = resp.json()
+    except ValueError:
+        return True
+    if isinstance(payload, dict) and "ok" in payload:
+        return payload.get("ok") is True
+    return True
+
+
 # ── ffmpeg merge (auto-detect AV1 → GPU transcode to H.264) ──
 
 def _probe_vcodec(video_path: Path) -> str:
@@ -435,7 +469,7 @@ def sync_hk_videos() -> dict[str, Any]:
         pending_ids = [r[0] for r in pending_rows]
         all_download_ids = list(dict.fromkeys(new_ids + pending_ids))  # dedup, preserve order
         if HK_AUTO_DOWNLOAD and all_download_ids:
-            for vid in all_download_ids:
+            for idx, vid in enumerate(all_download_ids):
                 row = conn.execute(
                     "SELECT video_id, category FROM hk_videos WHERE video_id=?", (vid,),
                 ).fetchone()
@@ -447,8 +481,12 @@ def sync_hk_videos() -> dict[str, Any]:
 
                 logger.info("Downloading %s (category=%s) → %s", vid, category, out_dir)
                 _mark_downloading(conn, vid)
+                lock_acquired = False
 
                 try:
+                    acquire_hk_pull_lock(vid)
+                    lock_acquired = True
+
                     # download video + audio + thumbnail + meta
                     video_file = out_dir / f"{vid}.mp4"
                     audio_file = out_dir / f"{vid}.m4a"
@@ -506,9 +544,14 @@ def sync_hk_videos() -> dict[str, Any]:
                     _mark_failed(conn, vid, str(exc))
                     summary["failed"] += 1
                     logger.warning("Download/merge failed: %s err=%s", vid, exc)
+                    if lock_acquired:
+                        try:
+                            release_hk_pull_lock(vid)
+                        except Exception as release_exc:
+                            logger.warning("HK pull lock release failed for %s: %s", vid, release_exc)
 
                 # wait between downloads
-                if HK_DOWNLOAD_INTERVAL_SEC > 0 and vid != new_ids[-1]:
+                if HK_DOWNLOAD_INTERVAL_SEC > 0 and idx < len(all_download_ids) - 1:
                     time.sleep(HK_DOWNLOAD_INTERVAL_SEC)
 
         _record_sync_log(conn, summary["new"], summary["downloaded"])

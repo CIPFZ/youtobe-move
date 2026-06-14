@@ -428,6 +428,11 @@ V3 第二批状态：已实施。`VideoCandidate` 和 `videos` 表新增 `score_
 provider 会输出并持久化评分明细；基础质量规则已支持标题黑名单、频道黑名单、
 频道白名单配置。
 
+V4 第一批状态：已实施。HK 端新增拉取锁生命周期：
+`POST /api/videos/<id>/pull-lock`、`POST /api/videos/<id>/release-pull-lock`、
+`POST /api/videos/<id>/mark-published`；`confirm-pulled` 会清理锁字段并标记
+`pulled`。本地拉取端已改为下载前抢锁、失败释放锁、成功确认 pulled。
+
 ### 7.1 目标
 
 - 明确搜索只走 yt-dlp，删除 YouTube API 兼容参数。

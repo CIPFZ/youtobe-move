@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +48,11 @@ def init_db(db_path: Path) -> None:
                 discovered_at TEXT NOT NULL,
                 downloaded_at TEXT NOT NULL DEFAULT '',
                 pulled_at TEXT NOT NULL DEFAULT '',
+                pull_locked_by TEXT NOT NULL DEFAULT '',
+                pull_lock_expires_at TEXT NOT NULL DEFAULT '',
+                publish_marked_at TEXT NOT NULL DEFAULT '',
+                publish_platform TEXT NOT NULL DEFAULT '',
+                publish_ref TEXT NOT NULL DEFAULT '',
                 expired_at TEXT NOT NULL DEFAULT '',
                 error TEXT NOT NULL DEFAULT '',
                 task_id INTEGER,
@@ -63,6 +68,11 @@ def init_db(db_path: Path) -> None:
         _add_column_if_missing(conn, 'videos', 'download_attempts', 'INTEGER NOT NULL DEFAULT 0')
         _add_column_if_missing(conn, 'videos', 'last_error_at', "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(conn, 'videos', 'score_json', "TEXT NOT NULL DEFAULT '{}'")
+        _add_column_if_missing(conn, 'videos', 'pull_locked_by', "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, 'videos', 'pull_lock_expires_at', "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, 'videos', 'publish_marked_at', "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, 'videos', 'publish_platform', "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, 'videos', 'publish_ref', "TEXT NOT NULL DEFAULT ''")
         conn.execute('CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_videos_category ON videos(category)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_videos_score ON videos(score DESC)')
@@ -330,10 +340,157 @@ def mark_pulled(db_path: Path, video_id: str, task_id: int | None = None) -> Non
     now = _now()
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE videos SET status='pulled', file_dir='', file_size=0, pulled_at=? WHERE video_id=?",
+            """
+            UPDATE videos
+            SET status='pulled', file_dir='', file_size=0, pulled_at=?,
+                pull_locked_by='', pull_lock_expires_at=''
+            WHERE video_id=?
+            """,
             (now, video_id),
         )
     add_video_event(db_path, video_id, 'pulled', 'Video pulled by local server', task_id=task_id)
+
+
+def reset_expired_pull_locks(db_path: Path) -> int:
+    now = _now()
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT video_id, pull_locked_by
+            FROM videos
+            WHERE status='pulling'
+              AND pull_lock_expires_at != ''
+              AND datetime(pull_lock_expires_at) <= datetime(?)
+            """,
+            (now,),
+        ).fetchall()
+        if not rows:
+            return 0
+        conn.execute(
+            """
+            UPDATE videos
+            SET status='downloaded', pull_locked_by='', pull_lock_expires_at=''
+            WHERE status='pulling'
+              AND pull_lock_expires_at != ''
+              AND datetime(pull_lock_expires_at) <= datetime(?)
+            """,
+            (now,),
+        )
+    for row in rows:
+        add_video_event(
+            db_path,
+            str(row[0]),
+            'pull_lock_expired',
+            'Pull lock expired',
+            {'pull_locked_by': str(row[1] or '')},
+        )
+    return len(rows)
+
+
+def acquire_pull_lock(
+    db_path: Path,
+    video_id: str,
+    *,
+    locked_by: str,
+    ttl_minutes: int,
+) -> dict[str, Any] | None:
+    reset_expired_pull_locks(db_path)
+    now = datetime.now(timezone.utc)
+    expires_at = (now + timedelta(minutes=max(1, int(ttl_minutes)))).isoformat()
+    owner = (locked_by or 'local').strip()[:200] or 'local'
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM videos WHERE video_id=?", (video_id,)).fetchone()
+        if row is None:
+            return None
+        current = dict(row)
+        if current.get('status') not in {'downloaded', 'pulling'}:
+            return current
+        if current.get('status') == 'pulling' and current.get('pull_locked_by') not in {'', owner}:
+            return current
+
+        conn.execute(
+            """
+            UPDATE videos
+            SET status='pulling', pull_locked_by=?, pull_lock_expires_at=?
+            WHERE video_id=?
+            """,
+            (owner, expires_at, video_id),
+        )
+    add_video_event(
+        db_path,
+        video_id,
+        'pull_lock_acquired',
+        'Pull lock acquired',
+        {'pull_locked_by': owner, 'pull_lock_expires_at': expires_at},
+    )
+    return get_video_by_id(db_path, video_id)
+
+
+def release_pull_lock(db_path: Path, video_id: str, *, locked_by: str = '') -> dict[str, Any] | None:
+    reset_expired_pull_locks(db_path)
+    owner = (locked_by or '').strip()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM videos WHERE video_id=?", (video_id,)).fetchone()
+        if row is None:
+            return None
+        current = dict(row)
+        if current.get('status') != 'pulling':
+            return current
+        if owner and current.get('pull_locked_by') not in {'', owner}:
+            return current
+        conn.execute(
+            """
+            UPDATE videos
+            SET status='downloaded', pull_locked_by='', pull_lock_expires_at=''
+            WHERE video_id=?
+            """,
+            (video_id,),
+        )
+    add_video_event(
+        db_path,
+        video_id,
+        'pull_lock_released',
+        'Pull lock released',
+        {'pull_locked_by': owner},
+    )
+    return get_video_by_id(db_path, video_id)
+
+
+def mark_published(
+    db_path: Path,
+    video_id: str,
+    *,
+    platform: str = '',
+    publish_ref: str = '',
+    task_id: int | None = None,
+) -> dict[str, Any] | None:
+    now = _now()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT video_id FROM videos WHERE video_id=?", (video_id,)).fetchone()
+        if row is None:
+            return None
+        conn.execute(
+            """
+            UPDATE videos
+            SET status='published', publish_marked_at=?, publish_platform=?, publish_ref=?,
+                pull_locked_by='', pull_lock_expires_at=''
+            WHERE video_id=?
+            """,
+            (now, str(platform or '')[:200], str(publish_ref or '')[:500], video_id),
+        )
+    add_video_event(
+        db_path,
+        video_id,
+        'published',
+        'Video marked published',
+        {'platform': platform, 'publish_ref': publish_ref},
+        task_id=task_id,
+    )
+    return get_video_by_id(db_path, video_id)
 
 
 def mark_expired(db_path: Path, video_id: str, task_id: int | None = None) -> None:
@@ -395,7 +552,9 @@ def _video_select_sql() -> str:
            score_json,
            file_dir, file_dir AS file_path, file_size, thumbnail_path, meta_path,
            task_id, download_progress, download_attempts, last_error_at,
-           downloaded_at, pulled_at, expired_at, error, error AS download_error,
+           downloaded_at, pulled_at, pull_locked_by, pull_lock_expires_at,
+           publish_marked_at, publish_platform, publish_ref,
+           expired_at, error, error AS download_error,
            discovered_at, raw_json
     FROM videos
     """
@@ -410,6 +569,7 @@ def list_videos(
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
+    reset_expired_pull_locks(db_path)
     sql = _video_select_sql() + " WHERE 1=1"
     params: list[Any] = []
     if category:
@@ -431,6 +591,7 @@ def list_videos(
 
 
 def count_videos(db_path: Path, *, category: str = '', download_status: str = '', min_score: float = 0.0) -> int:
+    reset_expired_pull_locks(db_path)
     sql = 'SELECT COUNT(*) FROM videos WHERE 1=1'
     params: list[Any] = []
     if category:
@@ -448,6 +609,7 @@ def count_videos(db_path: Path, *, category: str = '', download_status: str = ''
 
 
 def get_video_by_id(db_path: Path, video_id: str) -> dict[str, Any] | None:
+    reset_expired_pull_locks(db_path)
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(

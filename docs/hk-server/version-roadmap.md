@@ -388,6 +388,12 @@ downloaded -> expired
   HK 自动回到 downloaded
 ```
 
+当前状态：第一批已实施。HK 端已支持 `pull-lock`、`release-pull-lock`、
+`confirm-pulled` 和 `mark-published`；`videos` 表已增加
+`pull_locked_by`、`pull_lock_expires_at`、`publish_marked_at`、`publish_platform`
+和 `publish_ref`。本地 `social-auto-upload/hk_puller.py` 已在下载前抢锁，
+失败时释放锁，成功后确认 pulled。
+
 ### 5.4 API 设计
 
 ```text
@@ -405,7 +411,7 @@ HK DB 可增加：
 pull_locked_by
 pull_lock_expires_at
 pulled_at
-published_at
+publish_marked_at
 publish_platform
 publish_ref
 ```
