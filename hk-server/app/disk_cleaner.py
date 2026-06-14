@@ -8,7 +8,7 @@ from app.discovery.repository import (
     get_downloaded_oldest,
     get_expired_downloads,
     get_total_storage_bytes,
-    mark_cleaned,
+    mark_expired,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ def cleanup_if_needed(
     no files exceed *max_days* retention.  Returns number of files deleted.
 
     Only touches records with download_status='downloaded'.
-    If the on-disk file is already missing the record is still marked cleaned.
+    If the on-disk file is already missing the record is still marked expired.
     """
     deleted = 0
     max_bytes = int(max(0, max_gb) * 1024 ** 3)
@@ -70,10 +70,10 @@ def cleanup_if_needed(
                 except OSError as exc:
                     logger.warning('Cleanup: failed to delete disk files for %s: %s', vid, exc)
             else:
-                logger.info('Cleanup: file_path not on disk for %s, marking cleaned', vid)
+                logger.info('Cleanup: file_path not on disk for %s, marking expired', vid)
 
         # update DB
-        mark_cleaned(db_path, vid)
+        mark_expired(db_path, vid)
         deleted += 1
 
     return deleted

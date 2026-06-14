@@ -15,9 +15,10 @@ from app.discovery.repository import (
     get_video_by_id,
     init_db,
     list_videos,
-    mark_cleaned,
+    mark_pulled,
 )
 from app.settings import settings
+from app.task_state import finish_task, get_task_state, try_start_task
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +132,13 @@ def _parse_video_id(path: str) -> str | None:
     return None
 
 
+def _extract_youtube_video_id(url: str) -> str:
+    import re
+
+    m = re.search(r'(?:v=|/)([a-zA-Z0-9_-]{11})(?:[&#?/]|$)', url)
+    return m.group(1) if m else ''
+
+
 # ── request handler ──
 
 class _ApiHandler(BaseHTTPRequestHandler):
@@ -144,6 +152,14 @@ class _ApiHandler(BaseHTTPRequestHandler):
         qs = parse_qs(parsed.query)
 
         # GET /api/videos — list
+        if path == '/api/health':
+            self._handle_health()
+            return
+
+        if path == '/api/tasks':
+            self._handle_tasks()
+            return
+
         if path == '/api/videos':
             self._handle_list_videos(qs)
             return
@@ -199,13 +215,20 @@ class _ApiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip('/')
 
-        if path == '/api/trigger-discovery':
+        if path in {'/api/trigger-discovery', '/api/discovery/run'}:
             self._handle_trigger_discovery()
             return
 
-        if path == '/api/download':
+        if path in {'/api/download', '/api/downloads'}:
             self._handle_post_download()
             return
+
+        if path.startswith('/api/videos/'):
+            video_id = _parse_video_id(path)
+            parts = [p for p in path.split('/') if p]
+            if video_id and len(parts) >= 4 and parts[3] == 'confirm-pulled':
+                self._handle_confirm_pulled(video_id)
+                return
 
         _error_response(self, 'Not found', status=404)
 
@@ -329,8 +352,48 @@ class _ApiHandler(BaseHTTPRequestHandler):
                     _error_response(self, f'Failed to delete files: {exc}', status=500)
                     return
 
-        mark_cleaned(db_path, video_id)
-        _json_response(self, {'deleted': True, 'video_id': video_id})
+        mark_pulled(db_path, video_id)
+        _json_response(self, {'deleted': True, 'pulled': True, 'video_id': video_id})
+
+    def _handle_confirm_pulled(self, video_id: str) -> None:
+        self._handle_delete_video(video_id)
+
+    def _handle_health(self) -> None:
+        db_path = settings.discovery_db_path.resolve()
+        download_dir = settings.download_media_dir.resolve()
+        db_ok = False
+        db_error = ''
+        try:
+            init_db(db_path)
+            db_ok = True
+        except Exception as exc:
+            db_error = str(exc)
+
+        disk_free_gb = 0.0
+        download_dir_ok = False
+        try:
+            download_dir.mkdir(parents=True, exist_ok=True)
+            usage = shutil.disk_usage(download_dir)
+            disk_free_gb = round(usage.free / (1024 ** 3), 2)
+            download_dir_ok = True
+        except Exception:
+            download_dir_ok = False
+
+        status = 200 if db_ok and download_dir_ok else 503
+        _json_response(self, {
+            'service': 'hk-server',
+            'ok': db_ok and download_dir_ok,
+            'db_ok': db_ok,
+            'db_error': db_error,
+            'download_dir_ok': download_dir_ok,
+            'download_dir': str(download_dir),
+            'disk_free_gb': disk_free_gb,
+            'api_auth_enabled': bool(settings.api_token.strip()),
+            'task': get_task_state(),
+        }, status=status)
+
+    def _handle_tasks(self) -> None:
+        _json_response(self, get_task_state())
 
     def _handle_stats(self) -> None:
         db_path = settings.discovery_db_path.resolve()
@@ -339,12 +402,25 @@ class _ApiHandler(BaseHTTPRequestHandler):
 
     def _handle_trigger_discovery(self) -> None:
         """Start discovery+download in a background thread, return immediately."""
+        if not try_start_task('discovery_download'):
+            _json_response(self, {
+                'started': False,
+                'skipped': True,
+                'reason': 'task_running',
+                'task': get_task_state(),
+            }, status=409)
+            return
+
         def _bg() -> None:
-            from app.download_service import run_discovery_and_download
+            runner_started = False
             try:
-                summary = run_discovery_and_download()
+                from app.download_service import run_discovery_and_download
+                runner_started = True
+                summary = run_discovery_and_download(task_started=True)
                 logger.info('Manual trigger discovery complete: %s', summary)
             except Exception as exc:
+                if not runner_started:
+                    finish_task(error=str(exc))
                 logger.error('Manual trigger discovery failed: %s', exc, exc_info=True)
 
         t = threading.Thread(target=_bg, daemon=True)
@@ -374,27 +450,32 @@ class _ApiHandler(BaseHTTPRequestHandler):
             return
 
         category = str(body.get('category', 'manual') or 'manual').strip()
+        vid = _extract_youtube_video_id(url)
+        if not vid:
+            _error_response(self, 'Could not extract a valid YouTube video_id from url', status=400)
+            return
+
+        if not try_start_task('manual_download'):
+            _json_response(self, {
+                'started': False,
+                'skipped': True,
+                'reason': 'task_running',
+                'task': get_task_state(),
+            }, status=409)
+            return
 
         def _bg() -> None:
+            summary = {'video_id': vid, 'url': url, 'downloaded': False}
             try:
                 from app.discovery.repository import (
                     ensure_video_row, init_db, mark_downloaded, mark_download_failed, mark_downloading,
                 )
                 from app.disk_cleaner import cleanup_if_needed
                 from app.downloader import download_media
-                from pathlib import Path
 
                 db_path = settings.discovery_db_path.resolve()
                 media_root = settings.download_media_dir.resolve()
                 init_db(db_path)
-
-                # extract video_id from URL
-                import re as _re
-                m = _re.search(r'(?:v=|/)([a-zA-Z0-9_-]{11})', url)
-                if not m:
-                    logger.error('Could not extract video_id from URL: %s', url)
-                    return
-                vid = m.group(1)
 
                 out_dir = media_root / category / vid
                 out_dir.mkdir(parents=True, exist_ok=True)
@@ -403,7 +484,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
                 ensure_video_row(db_path, vid, url, category)
                 mark_downloading(db_path, vid)
 
-                result = download_media(
+                download_media(
                     url=url,
                     out_dir=out_dir,
                     cookie_file=settings.cookie_file,
@@ -414,6 +495,8 @@ class _ApiHandler(BaseHTTPRequestHandler):
                     f.stat().st_size for f in out_dir.rglob('*') if f.is_file()
                 )
                 mark_downloaded(db_path, vid, str(out_dir), total_size)
+                summary['downloaded'] = True
+                summary['file_size'] = total_size
                 logger.info('Manual download OK: %s (%s) size=%d', vid, url, total_size)
 
                 cleanup_if_needed(
@@ -421,17 +504,20 @@ class _ApiHandler(BaseHTTPRequestHandler):
                     max_gb=settings.disk_max_storage_gb,
                     max_days=settings.disk_max_retention_days,
                 )
+                finish_task(summary=summary)
             except Exception as exc:
+                try:
+                    from app.discovery.repository import mark_download_failed
+                    mark_download_failed(settings.discovery_db_path.resolve(), vid, str(exc))
+                except Exception:
+                    logger.exception('Manual download failure status update failed for %s', vid)
+                finish_task(summary=summary, error=str(exc))
                 logger.error('Manual download failed: %s err=%s', url, exc)
 
         t = threading.Thread(target=_bg, daemon=True)
         t.start()
 
-        # extract video_id for response
-        import re as _re
-        m = _re.search(r'(?:v=|/)([a-zA-Z0-9_-]{11})', url)
-        video_id = m.group(1) if m else ''
-        _json_response(self, {'started': True, 'video_id': video_id, 'url': url})
+        _json_response(self, {'started': True, 'video_id': vid, 'url': url})
 
     def log_message(self, fmt: str, *args: object) -> None:
         logger.debug('API %s', fmt % args)

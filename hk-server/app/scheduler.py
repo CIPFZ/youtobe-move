@@ -22,10 +22,14 @@ def run_scheduler() -> None:
     logger.info('Scheduler: starting single cycle')
 
     summary = run_discovery_and_download()
+    if summary.get("skipped"):
+        print(f'skipped=True reason={summary.get("reason", "")}')
+        logger.info('Scheduler: cycle skipped — %s', summary)
+        return
     print(
         f'discovered={summary["discovered"]} persisted={summary["persisted"]} '
         f'downloaded={summary["downloaded"]} failed={summary["failed"]} '
-        f'cleaned={summary["cleaned"]}'
+        f'expired={summary["expired"]}'
     )
     logger.info('Scheduler: cycle complete')
 

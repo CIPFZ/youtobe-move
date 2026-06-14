@@ -187,6 +187,22 @@ def mark_cleaned(db_path: Path, video_id: str) -> None:
         )
 
 
+def mark_pulled(db_path: Path, video_id: str) -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE discovered_videos SET download_status='pulled', file_path='', file_size=0 WHERE video_id=?",
+            (video_id,),
+        )
+
+
+def mark_expired(db_path: Path, video_id: str) -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE discovered_videos SET download_status='expired', file_path='', file_size=0 WHERE video_id=?",
+            (video_id,),
+        )
+
+
 # ── disk cleanup helpers ──
 
 def get_downloaded_oldest(db_path: Path, limit: int = 50) -> list[dict[str, Any]]:
