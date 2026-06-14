@@ -2,7 +2,7 @@
 
 香港服务器端，定时从 YouTube 发现指定分类的热门视频并下载，提供 HTTP API 供本地拉取。
 
-Stage 3 DB/config 简化已完成：当前核心表为 `videos`，统一使用 `status` 表示视频生命周期；语言、评论数、点赞数等 yt-dlp 搜索路径不可靠字段已从模型、DB 和评分逻辑中移除；发现缓存路径和 TTL 已配置化。
+Stage 4 搜索与评分重构已完成：当前核心表为 `videos`，统一使用 `status` 表示视频生命周期；发现只走 `yt-dlp` provider；语言、评论数、点赞数等不可靠字段已从模型、DB 和评分逻辑中移除；发现缓存路径、TTL 和配置匹配校验已配置化。
 
 ## 架构
 
@@ -114,7 +114,7 @@ Stage 3 新增配置：
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | DISCOVERY_CACHE_PATH | runtime/discovery/candidates_cache.json | 候选缓存路径 |
-| DISCOVERY_CACHE_TTL_SEC | 86400 | 候选缓存 TTL |
+| DISCOVERY_CACHE_TTL_SEC | 86400 | 候选缓存 TTL；关键词或搜索过滤参数变化时缓存自动失效 |
 
 Stage 3 已删除配置：
 
@@ -142,6 +142,27 @@ downloaded -> expired
 ```
 
 `language_hint`、`comment_count`、`like_count` 等不可靠字段已从核心视频表移除。
+
+## 发现缓存
+
+缓存文件由 `DISCOVERY_CACHE_PATH` 指定，结构包含：
+
+```json
+{
+  "created_at": "2026-06-14T00:00:00+00:00",
+  "provider": "yt-dlp",
+  "keywords": [{"keyword": "funny cats", "category": "pets"}],
+  "search": {
+    "max_results_per_keyword": 15,
+    "min_views": 10000,
+    "min_duration_sec": 60,
+    "max_duration_sec": 1800
+  },
+  "items": []
+}
+```
+
+缓存命中需要同时满足 TTL 未过期、provider 一致、关键词列表一致、搜索过滤参数一致。
 
 ## 数据流
 

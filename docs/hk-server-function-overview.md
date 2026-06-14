@@ -191,19 +191,13 @@ runtime/discovery/candidates_cache.json
 
 当前缓存策略：
 
-- TTL 固定 24 小时。
+- TTL 由 `DISCOVERY_CACHE_TTL_SEC` 控制。
 - 如果缓存新鲜，跳过 YouTube 搜索，直接从缓存候选重新评分并取 TopN。
 - 如果缓存过期或不存在，执行完整搜索，并将 raw candidates 保存到缓存。
+- 缓存文件包含 `provider`、`keywords`、`search` 和 `items`。
+- 如果关键词、分类或搜索过滤参数变化，旧缓存不会被复用。
 
-当前缓存文件路径是代码常量：
-
-```python
-CACHE_FILE = Path("runtime/discovery/candidates_cache.json")
-```
-
-它没有跟随 `DISCOVERY_DB_PATH` 或工作目录配置变化。
-
-阶段 3 目标是改为配置驱动：
+缓存路径和 TTL 由配置驱动：
 
 ```text
 DISCOVERY_CACHE_PATH=runtime/discovery/candidates_cache.json

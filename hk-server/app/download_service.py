@@ -5,6 +5,7 @@ import logging
 import shutil
 import time
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -18,13 +19,15 @@ from app.discovery.repository import (
     upsert_candidates,
 )
 from app.discovery.scoring import dedupe_and_sort
-from app.discovery.service import run_discovery_once
+from app.discovery.service import discovery_keywords, run_discovery_once
 from app.disk_cleaner import cleanup_if_needed
 from app.downloader import download_media
 from app.settings import settings
 from app.task_state import finish_task, try_start_task
 
 logger = logging.getLogger(__name__)
+
+DISCOVERY_PROVIDER = "yt-dlp"
 
 
 def _dir_size(path: Path) -> int:
@@ -40,7 +43,20 @@ def _dir_size(path: Path) -> int:
     return total
 
 
-def _load_cache() -> tuple[list[dict], bool]:
+def _cache_context() -> dict[str, Any]:
+    return {
+        "provider": DISCOVERY_PROVIDER,
+        "keywords": [asdict(item) for item in discovery_keywords()],
+        "search": {
+            "max_results_per_keyword": settings.discovery_max_results_per_keyword,
+            "min_views": settings.discovery_min_views,
+            "min_duration_sec": settings.discovery_min_duration_sec,
+            "max_duration_sec": settings.discovery_max_duration_sec,
+        },
+    }
+
+
+def _load_cache(context: dict[str, Any] | None = None) -> tuple[list[dict], bool]:
     """Return (raw_candidates, fresh). fresh=False means cache expired or missing."""
     cache_file = settings.discovery_cache_path.resolve()
     if not cache_file.exists():
@@ -51,9 +67,31 @@ def _load_cache() -> tuple[list[dict], bool]:
         if ttl == 0 or age > ttl:
             logger.info("Cache expired (age=%.1fh)", age / 3600)
             return [], False
-        data = json.loads(cache_file.read_text(encoding="utf-8"))
-        logger.info("Cache hit: %d candidates (age=%.1fh)", len(data), age / 3600)
-        return data, True
+        payload = json.loads(cache_file.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            logger.info("Cache ignored: legacy payload without metadata")
+            return [], False
+
+        expected = context or _cache_context()
+        actual = {
+            "provider": payload.get("provider"),
+            "keywords": payload.get("keywords"),
+            "search": payload.get("search"),
+        }
+        if actual != expected:
+            logger.info("Cache ignored: discovery configuration changed")
+            return [], False
+
+        items = payload.get("items") or []
+        if not isinstance(items, list):
+            logger.info("Cache ignored: invalid items payload")
+            return [], False
+
+        logger.info(
+            "Cache hit: %d candidates provider=%s age=%.1fh",
+            len(items), payload.get("provider") or "unknown", age / 3600,
+        )
+        return items, True
     except Exception as exc:
         logger.warning("Cache read failed: %s", exc)
         return [], False
@@ -71,14 +109,19 @@ def _normalise_cache_item(item: dict | VideoCandidate) -> dict:
     return data
 
 
-def _save_cache(raw: list[dict | VideoCandidate]) -> None:
+def _save_cache(raw: list[dict | VideoCandidate], context: dict[str, Any] | None = None) -> None:
     cache_file = settings.discovery_cache_path.resolve()
     cache_file.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        **(context or _cache_context()),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "items": [_normalise_cache_item(item) for item in raw],
+    }
     cache_file.write_text(
-        json.dumps([_normalise_cache_item(item) for item in raw], ensure_ascii=False, indent=2),
+        json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    logger.info("Cache saved: %d candidates", len(raw))
+    logger.info("Cache saved: %d candidates provider=%s", len(raw), payload["provider"])
 
 
 def _dicts_to_candidates(items: list[dict]) -> list[VideoCandidate]:
@@ -111,9 +154,10 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
         db_path = settings.discovery_db_path.resolve()
         init_db(db_path)
         top_n = settings.discovery_top_n
+        cache_context = _cache_context()
 
         # 1. Discovery — cache-first
-        cached_raw, fresh = _load_cache()
+        cached_raw, fresh = _load_cache(cache_context)
 
         if fresh:
             # Re-score from cache, pick new TopN
@@ -129,7 +173,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
                 logger.info("No candidates discovered.")
             else:
                 # Save ALL raw to cache so future runs can re-score without searching
-                _save_cache(_candidates_to_dicts(raw))
+                _save_cache(_candidates_to_dicts(raw), cache_context)
 
         # 2. Persist selected to DB
         if selected:

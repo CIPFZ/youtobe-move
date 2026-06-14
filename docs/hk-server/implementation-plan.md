@@ -415,6 +415,10 @@ pending -> running -> failed
 
 ## 7. 阶段 4：重构搜索和评分
 
+当前状态：已实施。搜索入口已明确为 `yt-dlp` provider；`discover_candidates()` 不再保留
+`api_key` 等 YouTube API 兼容参数；评分只依赖播放量和发布时间，时长只做过滤；
+发现缓存已写入 `provider`、`keywords`、`search` 和 `items`，关键词或过滤配置变化时不会复用旧缓存。
+
 ### 7.1 目标
 
 - 明确搜索只走 yt-dlp，删除 YouTube API 兼容参数。
@@ -423,7 +427,7 @@ pending -> running -> failed
 
 ### 7.2 搜索模块重构
 
-当前 `discover_candidates(api_key='', ...)` 保留了无用 `api_key` 参数。建议改为：
+`discover_candidates()` 已使用 keyword-only 参数：
 
 ```python
 def discover_candidates(
@@ -461,7 +465,7 @@ duration_score = 0，先只做过滤，不做加权
 
 ### 7.4 搜索缓存策略
 
-建议改为配置驱动：
+已改为配置驱动：
 
 ```text
 DISCOVERY_CACHE_PATH=runtime/discovery/candidates_cache.json
@@ -474,7 +478,13 @@ DISCOVERY_CACHE_TTL_SEC=86400
 {
   "created_at": "2026-06-14T00:00:00+00:00",
   "provider": "yt-dlp",
-  "keywords": ["funny cats"],
+  "keywords": [{"keyword": "funny cats", "category": "pets"}],
+  "search": {
+    "max_results_per_keyword": 15,
+    "min_views": 10000,
+    "min_duration_sec": 60,
+    "max_duration_sec": 1800
+  },
   "items": []
 }
 ```
