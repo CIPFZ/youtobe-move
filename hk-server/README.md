@@ -2,7 +2,7 @@
 
 香港服务器端，定时从 YouTube 发现指定分类的热门视频并下载，提供 HTTP API 供本地拉取。
 
-Stage 4 搜索与评分重构已完成：当前核心表为 `videos`，统一使用 `status` 表示视频生命周期；发现只走 `yt-dlp` provider；语言、评论数、点赞数等不可靠字段已从模型、DB 和评分逻辑中移除；发现缓存路径、TTL 和配置匹配校验已配置化。
+V2 任务化第一批已完成：当前核心表为 `videos`，统一使用 `status` 表示视频生命周期；发现只走 `yt-dlp` provider；发现/手动下载会写入持久化 `tasks` 和 `task_events`，触发接口返回 `task_id`。
 
 ## 架构
 
@@ -10,7 +10,8 @@ Stage 4 搜索与评分重构已完成：当前核心表为 `videos`，统一使
 hk-server (常驻进程 :8503)
 ├── 后台定时器 — 周期执行发现 + 下载
 ├── GET  /api/health        — 健康检查
-├── GET  /api/tasks         — 当前/最近任务状态
+├── GET  /api/tasks         — 任务列表（状态/分页）
+├── GET  /api/tasks/<id>    — 任务详情和事件
 ├── GET  /api/videos        — 视频列表（状态/分页）
 ├── GET  /api/videos/<id>   — 视频详情
 ├── GET  /api/videos/<id>/meta  — 完整元信息 JSON
@@ -89,7 +90,8 @@ JSON API 错误响应统一为：
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/health` | 健康检查 |
-| GET | `/api/tasks` | 当前/最近任务状态 |
+| GET | `/api/tasks?status=&type=&limit=&offset=` | 任务列表 |
+| GET | `/api/tasks/<id>` | 任务详情和事件 |
 | GET | `/api/videos?status=downloaded` | 待拉取列表；推荐查询参数 |
 | GET | `/api/videos?download_status=downloaded` | 旧查询参数，兼容别名 |
 | GET | `/api/videos/<id>` | 视频详情 |
@@ -100,8 +102,14 @@ JSON API 错误响应统一为：
 | POST | `/api/videos/<id>/confirm-pulled` | 确认拉取，删除服务器文件并标记 pulled |
 | DELETE | `/api/videos/<id>/files` | 管理员强制删除服务器文件并标记 expired |
 | GET | `/api/stats` | 存储统计 |
-| POST | `/api/discovery/run` | 手动触发发现下载 |
-| POST | `/api/downloads` | 手动提交 URL 下载 |
+| POST | `/api/discovery/run` | 手动触发发现下载，返回 `task_id` |
+| POST | `/api/downloads` | 手动提交 URL 下载，返回 `task_id` |
+
+任务触发响应示例：
+
+```json
+{"ok": true, "data": {"started": true, "task_id": 123, "status": "running"}}
+```
 
 ## 配置
 
@@ -142,6 +150,8 @@ Stage 3 已删除配置：
 
 ```text
 videos.status
+tasks.status
+task_events
 ```
 
 状态集合：

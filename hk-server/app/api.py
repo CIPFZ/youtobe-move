@@ -18,7 +18,15 @@ from app.discovery.repository import (
     mark_pulled,
 )
 from app.settings import settings
-from app.task_state import finish_task, get_task_state, try_start_task
+from app.task_state import finish_task, get_task_state, record_task_event, try_start_task
+from app.tasks import (
+    count_tasks,
+    get_task,
+    init_task_db,
+    list_task_events,
+    list_tasks,
+    recover_interrupted_tasks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +163,16 @@ def _parse_video_id(path: str) -> str | None:
     return None
 
 
+def _parse_task_id(path: str) -> int | None:
+    parts = [p for p in path.split('/') if p]
+    if len(parts) >= 3 and parts[0] == 'api' and parts[1] == 'tasks':
+        try:
+            return int(parts[2])
+        except ValueError:
+            return None
+    return None
+
+
 def _extract_youtube_video_id(url: str) -> str:
     import re
 
@@ -180,7 +198,15 @@ class _ApiHandler(BaseHTTPRequestHandler):
             return
 
         if path == '/api/tasks':
-            self._handle_tasks()
+            self._handle_tasks(qs)
+            return
+
+        if path.startswith('/api/tasks/'):
+            task_id = _parse_task_id(path)
+            if task_id is None:
+                _error_response(self, 'Invalid task_id', status=400)
+                return
+            self._handle_get_task(task_id)
             return
 
         if path == '/api/videos':
@@ -428,8 +454,28 @@ class _ApiHandler(BaseHTTPRequestHandler):
             details=data,
         )
 
-    def _handle_tasks(self) -> None:
-        _success_response(self, get_task_state())
+    def _handle_tasks(self, qs: dict[str, list[str]]) -> None:
+        status = (qs.get('status') or [''])[0].strip()
+        task_name = (qs.get('type') or qs.get('task_name') or [''])[0].strip()
+        limit = int((qs.get('limit') or ['50'])[0] or 50)
+        offset = int((qs.get('offset') or ['0'])[0] or 0)
+        db_path = settings.discovery_db_path.resolve()
+        _success_response(self, {
+            'items': list_tasks(db_path, status=status, task_name=task_name, limit=limit, offset=offset),
+            'total': count_tasks(db_path, status=status, task_name=task_name),
+            'limit': limit,
+            'offset': offset,
+            'current': get_task_state(),
+        })
+
+    def _handle_get_task(self, task_id: int) -> None:
+        db_path = settings.discovery_db_path.resolve()
+        task = get_task(db_path, task_id)
+        if task is None:
+            _error_response(self, 'Task not found', status=404)
+            return
+        task['events'] = list_task_events(db_path, task_id)
+        _success_response(self, task)
 
     def _handle_stats(self) -> None:
         db_path = settings.discovery_db_path.resolve()
@@ -438,7 +484,8 @@ class _ApiHandler(BaseHTTPRequestHandler):
 
     def _handle_trigger_discovery(self) -> None:
         """Start discovery+download in a background thread, return immediately."""
-        if not try_start_task('discovery_download'):
+        task = try_start_task('discovery_download')
+        if task is None:
             _error_response(
                 self,
                 'A background task is already running',
@@ -462,7 +509,12 @@ class _ApiHandler(BaseHTTPRequestHandler):
 
         t = threading.Thread(target=_bg, daemon=True)
         t.start()
-        _success_response(self, {'started': True, 'message': 'Discovery + download triggered in background'})
+        _success_response(self, {
+            'started': True,
+            'task_id': task['task_id'],
+            'status': task['status'],
+            'message': 'Discovery + download triggered in background',
+        })
 
     def _handle_post_download(self) -> None:
         """POST /api/download — download a specific YouTube URL.
@@ -492,7 +544,8 @@ class _ApiHandler(BaseHTTPRequestHandler):
             _error_response(self, 'Could not extract a valid YouTube video_id from url', status=400)
             return
 
-        if not try_start_task('manual_download'):
+        task = try_start_task('manual_download', input_data={'url': url, 'category': category, 'video_id': vid})
+        if task is None:
             _error_response(
                 self,
                 'A background task is already running',
@@ -517,6 +570,11 @@ class _ApiHandler(BaseHTTPRequestHandler):
 
                 out_dir = media_root / category / vid
                 out_dir.mkdir(parents=True, exist_ok=True)
+                record_task_event('manual_download_started', f'Manual download started: {vid}', {
+                    'video_id': vid,
+                    'category': category,
+                    'url': url,
+                })
 
                 # ensure DB row exists (for manual downloads that skip discovery)
                 ensure_video_row(db_path, vid, url, category)
@@ -542,6 +600,10 @@ class _ApiHandler(BaseHTTPRequestHandler):
                 )
                 summary['downloaded'] = True
                 summary['file_size'] = total_size
+                record_task_event('manual_downloaded', f'Manual download finished: {vid}', {
+                    'video_id': vid,
+                    'file_size': total_size,
+                })
                 logger.info('Manual download OK: %s (%s) size=%d', vid, url, total_size)
 
                 cleanup_if_needed(
@@ -556,13 +618,23 @@ class _ApiHandler(BaseHTTPRequestHandler):
                     mark_download_failed(settings.discovery_db_path.resolve(), vid, str(exc))
                 except Exception:
                     logger.exception('Manual download failure status update failed for %s', vid)
+                record_task_event('manual_download_failed', f'Manual download failed: {vid}', {
+                    'video_id': vid,
+                    'error': str(exc),
+                })
                 finish_task(summary=summary, error=str(exc))
                 logger.error('Manual download failed: %s err=%s', url, exc)
 
         t = threading.Thread(target=_bg, daemon=True)
         t.start()
 
-        _success_response(self, {'started': True, 'video_id': vid, 'url': url})
+        _success_response(self, {
+            'started': True,
+            'task_id': task['task_id'],
+            'status': task['status'],
+            'video_id': vid,
+            'url': url,
+        })
 
     def log_message(self, fmt: str, *args: object) -> None:
         logger.debug('API %s', fmt % args)
@@ -580,6 +652,10 @@ def run_api_server(host: str | None = None, port: int | None = None) -> Threadin
     db = settings.discovery_db_path.resolve()
 
     init_db(db)
+    init_task_db(db)
+    recovered = recover_interrupted_tasks(db)
+    if recovered:
+        logger.warning('Recovered %d interrupted task(s) at API startup', recovered)
     logger.info('API server starting on %s:%d (db=%s)', h, p, db)
 
     server = ThreadingHTTPServer((h, p), _ApiHandler)

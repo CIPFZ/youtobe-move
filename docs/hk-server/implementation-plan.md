@@ -551,6 +551,27 @@ hk-server/tests/
 
 ## 9. 建议执行顺序
 
+### V2 第一批：持久化任务记录
+
+当前状态：已实施。完成内容：
+
+- 新增 `hk-server/app/tasks.py`。
+- SQLite 新增 `tasks` 和 `task_events` 表。
+- `task_state.py` 从进程内状态改为基于 SQLite 任务表的兼容外观。
+- `POST /api/discovery/run` 返回 `task_id`。
+- `POST /api/downloads` 返回 `task_id` 和 `video_id`。
+- `GET /api/tasks?status=&type=&limit=&offset=` 返回任务分页列表和 `current` 快照。
+- `GET /api/tasks/<id>` 返回任务详情和事件。
+- discovery/download 主流程写入任务事件。
+- API 服务启动时将遗留 `pending/running` 任务标记为失败，避免重启后任务状态悬挂。
+
+下一批建议继续：
+
+1. `POST /api/tasks/<id>/cancel`，先实现阶段边界取消。
+2. `POST /api/tasks/<id>/retry`，基于原任务 `input` 创建新任务。
+3. `video_events`，记录视频级 discovered/downloading/downloaded/failed/pulled/expired。
+4. `videos` 增加 `task_id`、`download_attempts`、`last_error_at`、`download_progress`。
+
 ### 第 1 批：稳定性最小闭环
 
 1. 新增 `app/task_state.py`。

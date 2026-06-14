@@ -38,7 +38,7 @@ curl -s "http://127.0.0.1:8503/api/videos?status=downloaded&limit=5"
 预期：
 
 - `/api/health` 返回 `{"ok": true, "data": ...}`。
-- `/api/tasks` 返回当前或最近任务状态。
+- `/api/tasks` 返回任务分页列表，`data.current` 返回当前任务快照。
 - `/api/videos` 返回 `data.items`、`data.total`、`data.limit`、`data.offset`。
 
 如果配置了 `API_TOKEN`：
@@ -57,6 +57,11 @@ curl -s -X POST http://127.0.0.1:8503/api/discovery/run
 ```
 
 预期第二次在任务仍运行时返回 `409`，错误码为 `task_running`。
+第一次响应会包含 `data.task_id`，可继续查询：
+
+```bash
+curl -s http://127.0.0.1:8503/api/tasks/<task_id>
+```
 
 ## Manual Download Smoke
 
@@ -68,7 +73,7 @@ curl -s -X POST http://127.0.0.1:8503/api/downloads \
   -d '{"url":"not-a-youtube-url","category":"manual"}'
 ```
 
-合法 URL 会立即返回 `started=true`，后台执行下载：
+合法 URL 会立即返回 `started=true` 和 `task_id`，后台执行下载：
 
 ```bash
 curl -s -X POST http://127.0.0.1:8503/api/downloads \

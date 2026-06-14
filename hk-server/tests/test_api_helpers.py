@@ -42,6 +42,9 @@ def test_json_success_and_error_envelopes():
 def test_video_id_helpers():
     assert api._parse_video_id("/api/videos/abc123/file") == "abc123"
     assert api._parse_video_id("/api/stats") is None
+    assert api._parse_task_id("/api/tasks/123") == 123
+    assert api._parse_task_id("/api/tasks/not-int") is None
+    assert api._parse_task_id("/api/videos/123") is None
     assert api._extract_youtube_video_id("https://www.youtube.com/watch?v=abc123def45") == "abc123def45"
     assert api._extract_youtube_video_id("https://youtu.be/abc123def45") == "abc123def45"
     assert api._extract_youtube_video_id("not youtube") == ""

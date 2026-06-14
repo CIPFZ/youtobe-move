@@ -78,6 +78,12 @@ GET  /api/stats
 
 ## 3. V2：任务化和可观测
 
+当前状态：第一批已实施。已新增 `app/tasks.py`，在 SQLite 中创建 `tasks`
+和 `task_events`；`POST /api/discovery/run`、`POST /api/downloads` 返回
+`task_id`；`GET /api/tasks` 返回分页任务列表，`GET /api/tasks/<id>` 返回
+任务详情和事件；服务启动时会把遗留 `pending/running` 任务标记为失败以完成重启恢复。
+取消、重试、下载进度和视频级事件作为下一批继续实现。
+
 ### 3.1 目标
 
 V2 把后台行为从“临时线程 + 日志”升级为“可查询任务系统”。重点是可观测、可重试、可排障。
@@ -86,13 +92,13 @@ V2 把后台行为从“临时线程 + 日志”升级为“可查询任务系�
 
 新增：
 
-- 持久化任务表。
-- discovery 任务记录。
-- 单 URL 下载任务记录。
-- 每个视频下载进度和错误记录。
-- 任务重试接口。
-- 任务取消标记。
-- 最近任务列表和详情 API。
+- 持久化任务表。已完成第一批。
+- discovery 任务记录。已完成第一批。
+- 单 URL 下载任务记录。已完成第一批。
+- 最近任务列表和详情 API。已完成第一批。
+- 每个视频下载进度和错误记录。下一批。
+- 任务重试接口。下一批。
+- 任务取消标记。下一批。
 
 ### 3.3 建议 schema
 
@@ -112,7 +118,22 @@ CREATE TABLE tasks (
 );
 ```
 
-新增或扩展 `video_events`：
+当前实现字段名使用 `task_id`、`task_name`，语义分别对应 `id`、`type`。
+
+当前第一批新增 `task_events`：
+
+```sql
+CREATE TABLE task_events (
+  event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL,
+  event_type TEXT NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+```
+
+后续可新增或扩展 `video_events`：
 
 ```sql
 CREATE TABLE video_events (
@@ -155,6 +176,9 @@ POST /api/tasks/<id>/cancel
 GET  /api/videos/<id>/events
 ```
 
+当前第一批已实现 `GET /api/tasks` 和 `GET /api/tasks/<id>`；retry、cancel
+和 video events 留到下一批。
+
 V1 的：
 
 ```text
@@ -169,7 +193,7 @@ POST /api/downloads
   "ok": true,
   "data": {
     "task_id": 123,
-    "status": "pending"
+    "status": "running"
   }
 }
 ```

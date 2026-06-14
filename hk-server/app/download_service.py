@@ -23,7 +23,7 @@ from app.discovery.service import discovery_keywords, run_discovery_once
 from app.disk_cleaner import cleanup_if_needed
 from app.downloader import download_media
 from app.settings import settings
-from app.task_state import finish_task, try_start_task
+from app.task_state import finish_task, record_task_event, try_start_task
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +141,7 @@ def _candidates_to_dicts(candidates: list[VideoCandidate]) -> list[dict]:
 
 
 def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
-    if not task_started and not try_start_task("discovery_download"):
+    if not task_started and try_start_task("discovery_download") is None:
         logger.info("Discovery/download task already running, skipping")
         return {"skipped": True, "reason": "task_running"}
 
@@ -155,6 +155,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
         init_db(db_path)
         top_n = settings.discovery_top_n
         cache_context = _cache_context()
+        record_task_event("discovery_started", "Discovery and download cycle started")
 
         # 1. Discovery — cache-first
         cached_raw, fresh = _load_cache(cache_context)
@@ -164,11 +165,13 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
             raw = _dicts_to_candidates(cached_raw)
             selected = dedupe_and_sort(raw, top_n=top_n)
             summary["cached"] = True
+            record_task_event("cache_hit", "Discovery cache hit", {"raw": len(raw), "selected": len(selected)})
             logger.info("Re-scored from cache: selected=%d (raw=%d)", len(selected), len(raw))
         else:
             # Full discovery — saves ALL raw candidates to cache
             raw, selected = run_discovery_once()
             summary["discovered"] = len(selected)
+            record_task_event("discovery_finished", "Discovery search finished", {"raw": len(raw), "selected": len(selected)})
             if not selected:
                 logger.info("No candidates discovered.")
             else:
@@ -179,6 +182,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
         if selected:
             count = upsert_candidates(db_path, selected)
             summary["persisted"] = count
+            record_task_event("candidates_persisted", "Candidates persisted", {"count": count})
             logger.info("Persisted %d candidates to DB", count)
 
         # 3. Download pending
@@ -197,6 +201,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
             out_dir.mkdir(parents=True, exist_ok=True)
 
             logger.info("Downloading %s category=%s -> %s", vid, category, out_dir)
+            record_task_event("download_started", f"Downloading {vid}", {"video_id": vid, "category": category})
             mark_downloading(db_path, vid)
 
             try:
@@ -217,6 +222,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
                     meta_path=str(out_dir / f'{vid}.video_info.json'),
                 )
                 summary["downloaded"] += 1
+                record_task_event("downloaded", f"Downloaded {vid}", {"video_id": vid, "file_size": total_size})
                 logger.info("Download OK: %s size=%d", vid, total_size)
             except Exception as exc:
                 if out_dir.exists():
@@ -226,6 +232,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
                         pass
                 mark_download_failed(db_path, vid, str(exc))
                 summary["failed"] += 1
+                record_task_event("download_failed", f"Download failed: {vid}", {"video_id": vid, "error": str(exc)})
                 logger.warning("Download failed: %s err=%s", vid, exc)
 
             # 4. Cleanup after each download
@@ -237,6 +244,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
             )
             if expired:
                 summary["expired"] += expired
+                record_task_event("cleanup", "Cleanup expired downloads", {"expired": expired})
 
             # wait between downloads to avoid rate limiting
             if i < len(pending) - 1 and interval > 0:
@@ -248,8 +256,10 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
             summary["cached"], summary["discovered"], summary["persisted"],
             summary["downloaded"], summary["failed"], summary["expired"],
         )
+        record_task_event("cycle_finished", "Discovery and download cycle finished", summary)
         finish_task(summary=summary)
         return summary
     except Exception as exc:
+        record_task_event("cycle_failed", "Discovery and download cycle failed", {"error": str(exc), "summary": summary})
         finish_task(summary=summary, error=str(exc))
         raise
