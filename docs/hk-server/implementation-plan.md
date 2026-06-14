@@ -589,8 +589,16 @@ hk-server/tests/
 
 下一批建议继续：
 
-1. 将手动下载后台编排从 `api.py` 抽到 service 层。
-2. 视需要补 `video_events` 的分页和按 `task_id` 查询。
+1. 视需要补 `video_events` 的分页和按 `task_id` 查询。
+
+### V2 第四批：手动下载 service 化
+
+当前状态：已实施。完成内容：
+
+- 新增 `download_service.run_manual_download()`。
+- API 层只负责参数校验、创建任务和启动后台线程。
+- 手动下载成功、失败、取消、进度、清理都在 service 层处理。
+- 新增离线测试覆盖手动下载成功和失败落库。
 
 ### 第 1 批：稳定性最小闭环
 

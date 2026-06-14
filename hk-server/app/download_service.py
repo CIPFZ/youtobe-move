@@ -11,6 +11,7 @@ from typing import Any
 
 from app.discovery.models import VideoCandidate
 from app.discovery.repository import (
+    ensure_video_row,
     get_pending_downloads,
     init_db,
     mark_download_failed,
@@ -167,6 +168,94 @@ def make_progress_callback(db_path, video_id: str, task_id: int | None):
         record_task_event('download_progress', f"{video_id} {value:.1f}%", {'video_id': video_id, **progress})
 
     return _callback
+
+
+def run_manual_download(*, url: str, category: str, video_id: str) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "video_id": video_id,
+        "url": url,
+        "downloaded": False,
+        "cancelled": False,
+    }
+
+    db_path = settings.discovery_db_path.resolve()
+    media_root = settings.download_media_dir.resolve()
+    init_db(db_path)
+    task_id = get_current_task_id()
+
+    try:
+        if is_current_task_cancel_requested():
+            summary["cancelled"] = True
+            record_task_event(
+                "manual_download_cancelled",
+                f"Manual download cancelled before start: {video_id}",
+                {"video_id": video_id},
+            )
+            finish_task(summary=summary)
+            return summary
+
+        out_dir = media_root / category / video_id
+        out_dir.mkdir(parents=True, exist_ok=True)
+        record_task_event(
+            "manual_download_started",
+            f"Manual download started: {video_id}",
+            {"video_id": video_id, "category": category, "url": url},
+        )
+
+        ensure_video_row(db_path, video_id, url, category)
+        mark_downloading(db_path, video_id, task_id=task_id)
+
+        result = download_media(
+            url=url,
+            out_dir=out_dir,
+            cookie_file=settings.cookie_file,
+            proxy_url=settings.ytdlp_proxy,
+            playlist_strategy=settings.playlist_strategy,
+            progress_callback=make_progress_callback(db_path, video_id, task_id),
+        )
+        total_size = _dir_size(out_dir)
+        mark_downloaded(
+            db_path,
+            video_id,
+            str(out_dir),
+            total_size,
+            thumbnail_path=str(result.get("thumbnail_path") or ""),
+            meta_path=str(out_dir / f"{video_id}.video_info.json"),
+            task_id=task_id,
+        )
+        summary["downloaded"] = True
+        summary["file_size"] = total_size
+        record_task_event(
+            "manual_downloaded",
+            f"Manual download finished: {video_id}",
+            {"video_id": video_id, "file_size": total_size},
+        )
+        logger.info("Manual download OK: %s (%s) size=%d", video_id, url, total_size)
+
+        expired = cleanup_if_needed(
+            db_path=db_path,
+            media_dir=media_root,
+            max_gb=settings.disk_max_storage_gb,
+            max_days=settings.disk_max_retention_days,
+        )
+        if expired:
+            summary["expired"] = expired
+
+        finish_task(summary=summary)
+        return summary
+    except Exception as exc:
+        try:
+            mark_download_failed(db_path, video_id, str(exc), task_id=get_current_task_id())
+        except Exception:
+            logger.exception("Manual download failure status update failed for %s", video_id)
+        record_task_event(
+            "manual_download_failed",
+            f"Manual download failed: {video_id}",
+            {"video_id": video_id, "error": str(exc)},
+        )
+        finish_task(summary=summary, error=str(exc))
+        logger.error("Manual download failed: %s err=%s", url, exc)
+        return summary
 
 
 def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:

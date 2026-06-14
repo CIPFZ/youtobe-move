@@ -19,15 +19,7 @@ from app.discovery.repository import (
     mark_pulled,
 )
 from app.settings import settings
-from app.download_service import make_progress_callback
-from app.task_state import (
-    finish_task,
-    get_current_task_id,
-    get_task_state,
-    is_current_task_cancel_requested,
-    record_task_event,
-    try_start_task,
-)
+from app.task_state import finish_task, get_task_state, try_start_task
 from app.tasks import (
     count_tasks,
     get_task,
@@ -639,85 +631,12 @@ class _ApiHandler(BaseHTTPRequestHandler):
             return
 
         def _bg() -> None:
-            summary = {'video_id': vid, 'url': url, 'downloaded': False}
             try:
-                from app.discovery.repository import (
-                    ensure_video_row, init_db, mark_downloaded, mark_download_failed, mark_downloading,
-                )
-                from app.disk_cleaner import cleanup_if_needed
-                from app.downloader import download_media
-
-                db_path = settings.discovery_db_path.resolve()
-                media_root = settings.download_media_dir.resolve()
-                init_db(db_path)
-                task_id = get_current_task_id()
-
-                if is_current_task_cancel_requested():
-                    summary['cancelled'] = True
-                    record_task_event('manual_download_cancelled', f'Manual download cancelled before start: {vid}', {
-                        'video_id': vid,
-                    })
-                    finish_task(summary=summary)
-                    return
-
-                out_dir = media_root / category / vid
-                out_dir.mkdir(parents=True, exist_ok=True)
-                record_task_event('manual_download_started', f'Manual download started: {vid}', {
-                    'video_id': vid,
-                    'category': category,
-                    'url': url,
-                })
-
-                # ensure DB row exists (for manual downloads that skip discovery)
-                ensure_video_row(db_path, vid, url, category)
-                mark_downloading(db_path, vid, task_id=task_id)
-
-                result = download_media(
-                    url=url,
-                    out_dir=out_dir,
-                    cookie_file=settings.cookie_file,
-                    proxy_url=settings.ytdlp_proxy,
-                    playlist_strategy=settings.playlist_strategy,
-                    progress_callback=make_progress_callback(db_path, vid, task_id),
-                )
-                total_size = sum(
-                    f.stat().st_size for f in out_dir.rglob('*') if f.is_file()
-                )
-                mark_downloaded(
-                    db_path,
-                    vid,
-                    str(out_dir),
-                    total_size,
-                    thumbnail_path=str(result.get('thumbnail_path') or ''),
-                    meta_path=str(out_dir / f'{vid}.video_info.json'),
-                    task_id=task_id,
-                )
-                summary['downloaded'] = True
-                summary['file_size'] = total_size
-                record_task_event('manual_downloaded', f'Manual download finished: {vid}', {
-                    'video_id': vid,
-                    'file_size': total_size,
-                })
-                logger.info('Manual download OK: %s (%s) size=%d', vid, url, total_size)
-
-                cleanup_if_needed(
-                    db_path=db_path, media_dir=media_root,
-                    max_gb=settings.disk_max_storage_gb,
-                    max_days=settings.disk_max_retention_days,
-                )
-                finish_task(summary=summary)
+                from app.download_service import run_manual_download
+                run_manual_download(url=url, category=category, video_id=vid)
             except Exception as exc:
-                try:
-                    from app.discovery.repository import mark_download_failed
-                    mark_download_failed(settings.discovery_db_path.resolve(), vid, str(exc), task_id=get_current_task_id())
-                except Exception:
-                    logger.exception('Manual download failure status update failed for %s', vid)
-                record_task_event('manual_download_failed', f'Manual download failed: {vid}', {
-                    'video_id': vid,
-                    'error': str(exc),
-                })
-                finish_task(summary=summary, error=str(exc))
-                logger.error('Manual download failed: %s err=%s', url, exc)
+                finish_task(summary={'video_id': vid, 'url': url, 'downloaded': False}, error=str(exc))
+                logger.error('Manual download task failed before service handled it: %s err=%s', url, exc)
 
         t = threading.Thread(target=_bg, daemon=True)
         t.start()
