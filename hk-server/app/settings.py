@@ -20,8 +20,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default='INFO')
     log_file: Path = Field(default=Path('runtime/logs/hk-server.log'))
 
-    # ── discovery (daily candidate collection via yt-dlp) ──
-    discovery_enabled: bool = Field(default=True)
+    # ── discovery (candidate collection via yt-dlp) ──
     discovery_topic_types: str = Field(default='pets,beauty,funny')
 
     # per-topic keywords
@@ -32,25 +31,17 @@ class Settings(BaseSettings):
     discovery_topic_beauty_keywords: str = Field(default='beauty,makeup tutorial,fashion,skincare,outfit,hairstyle,beauty tips')
     discovery_topic_funny_keywords: str = Field(default='funny videos,comedy,pranks,fails,viral funny,funny moments,try not to laugh,funny compilation')
 
-    # per-topic language filter (comma-separated ISO 639-1 prefixes; empty = allow all)
-    discovery_topic_ai_languages: str = Field(default='en')
-    discovery_topic_tech_languages: str = Field(default='en')
-    discovery_topic_digital_languages: str = Field(default='en')
-    discovery_topic_pets_languages: str = Field(default='')
-    discovery_topic_beauty_languages: str = Field(default='')
-    discovery_topic_funny_languages: str = Field(default='')
-
     # generic extra keywords
     discovery_keywords: str = Field(default='')
 
-    discovery_days_back: int = Field(default=7)
     discovery_max_results_per_keyword: int = Field(default=15)
     discovery_top_n: int = Field(default=5)
     discovery_min_views: int = Field(default=10000)
-    discovery_min_comments: int = Field(default=0)  # yt-dlp flat search cannot provide comment_count
     discovery_min_duration_sec: int = Field(default=60)
     discovery_max_duration_sec: int = Field(default=1800)
     discovery_db_path: Path = Field(default=Path('runtime/discovery/discovery.db'))
+    discovery_cache_path: Path = Field(default=Path('runtime/discovery/candidates_cache.json'))
+    discovery_cache_ttl_sec: int = Field(default=86400)
     discovery_interval_minutes: int = Field(default=1440)
 
     # score threshold for auto-download (candidates with score >= this get downloaded)

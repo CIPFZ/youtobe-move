@@ -2,6 +2,8 @@
 
 香港服务器端，定时从 YouTube 发现指定分类的热门视频并下载，提供 HTTP API 供本地拉取。
 
+Stage 3 DB/config 简化已完成：当前核心表为 `videos`，统一使用 `status` 表示视频生命周期；语言、评论数、点赞数等 yt-dlp 搜索路径不可靠字段已从模型、DB 和评分逻辑中移除；发现缓存路径和 TTL 已配置化。
+
 ## 架构
 
 ```
@@ -76,7 +78,8 @@ JSON API 错误响应统一为：
 |------|------|------|
 | GET | `/api/health` | 健康检查 |
 | GET | `/api/tasks` | 当前/最近任务状态 |
-| GET | `/api/videos?download_status=downloaded` | 待拉取列表 |
+| GET | `/api/videos?status=downloaded` | 待拉取列表；推荐查询参数 |
+| GET | `/api/videos?download_status=downloaded` | 旧查询参数，兼容别名 |
 | GET | `/api/videos/<id>` | 视频详情 |
 | GET | `/api/videos/<id>/meta` | 完整 .video_info.json |
 | GET | `/api/videos/<id>/file?type=video` | 下载视频流(.mp4) |
@@ -100,10 +103,45 @@ JSON API 错误响应统一为：
 | DISCOVERY_TOPIC_TYPES | pets,beauty,funny | 分类 |
 | DISCOVERY_TOP_N | 5 | 每日选取数 |
 | DISCOVERY_INTERVAL_MINUTES | 1440 | 发现周期 |
+| DISCOVERY_DB_PATH | runtime/discovery/discovery.db | SQLite 路径 |
 | DISK_MAX_STORAGE_GB | 50 | 存储上限 |
 | DISK_MAX_RETENTION_DAYS | 7 | 保留天数 |
 | DOWNLOAD_INTERVAL_SEC | 180 | 下载间隔 |
 | API_PORT | 8503 | 端口 |
+
+Stage 3 新增配置：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| DISCOVERY_CACHE_PATH | runtime/discovery/candidates_cache.json | 候选缓存路径 |
+| DISCOVERY_CACHE_TTL_SEC | 86400 | 候选缓存 TTL |
+
+Stage 3 已删除配置：
+
+| 配置项 | 原因 |
+|--------|------|
+| DISCOVERY_DAYS_BACK | yt-dlp 搜索路径无法可靠按日期过滤 |
+| DISCOVERY_MIN_COMMENTS | yt-dlp 搜索结果没有可靠评论数 |
+| DISCOVERY_TOPIC_{X}_LANGUAGES | 当前语言字段通常为空，过滤约束力弱 |
+
+## 数据库状态
+
+当前实现：
+
+```text
+videos.status
+```
+
+状态集合：
+
+```text
+pending -> downloading -> downloaded
+pending -> downloading -> failed
+downloaded -> pulled
+downloaded -> expired
+```
+
+`language_hint`、`comment_count`、`like_count` 等不可靠字段已从核心视频表移除。
 
 ## 数据流
 

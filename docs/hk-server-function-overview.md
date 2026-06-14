@@ -4,6 +4,8 @@
 
 当前是第一版开发阶段，不需要保留历史兼容包袱。后续发现设计或实现不合理，可以直接删除、重构、简化。
 
+阶段 3（DB/config 简化）已完成：当前代码以 `videos.status` 为核心状态字段；语言、评论数、点赞数等 yt-dlp 搜索路径无法可靠提供的字段已从模型、DB 和评分逻辑中移除。
+
 ## 1. 当前定位
 
 `hk-server` 是一个独立 Python 包，依赖较少：
@@ -144,18 +146,17 @@ DISCOVERY_KEYWORDS=keyword1,keyword2
 | `video_id` | YouTube 视频 ID |
 | `url` | YouTube URL |
 | `title` | 标题 |
-| `description` | 描述，搜索结果里通常为空 |
-| `channel_id` / `channel_title` | 频道信息，取决于 yt-dlp 搜索结果 |
+| `channel_title` | 频道名 |
 | `published_at` | 上传日期，来自 `upload_date` 转 ISO |
-| `language_hint` | 当前通常为空 |
 | `duration_sec` | 时长 |
 | `view_count` | 播放量 |
-| `comment_count` | 当前固定为 0 |
-| `like_count` | 当前固定为 0 |
 | `keyword` | 命中的搜索关键词 |
 | `category` | 分类 |
 | `score` | 热度分 |
 | `raw_json` | yt-dlp 原始搜索结果 JSON |
+
+旧实现曾保留 `language_hint`、`comment_count`、`like_count` 等字段，但这些值在
+yt-dlp 扁平搜索结果里通常为空或固定为 0；阶段 3 已将它们从核心模型、DB 和评分逻辑中删除。
 
 ### 4.2 候选过滤和评分
 
@@ -163,19 +164,16 @@ DISCOVERY_KEYWORDS=keyword1,keyword2
 
 - 播放量必须 >= `DISCOVERY_MIN_VIEWS`。
 - 时长必须在 `DISCOVERY_MIN_DURATION_SEC` 和 `DISCOVERY_MAX_DURATION_SEC` 之间。
-- 语言按 `DISCOVERY_TOPIC_{X}_LANGUAGES` 判断。
-- 评论数过滤在 yt-dlp 搜索路径中被强制忽略，因为搜索结果没有评论数。
 
-注意：当前 `language_hint` 通常为空，而 `_language_allowed()` 对空语言会放行，所以语言限制实际约束力较弱。
+
 
 评分逻辑：
 
 ```text
-score = log10(view_count) + 1.3 * log10(max(5, comment_count)) + freshness
-freshness = 24 / age_hours
+score = log10(max(10, view_count)) + freshness
 ```
 
-因为 `comment_count=0`，评论项基本是固定值，排名主要受播放量和发布时间影响。
+当前评分只依赖播放量和新鲜度，不再依赖搜索结果中不可靠的评论数、点赞数或语言字段。
 
 去重逻辑：
 
@@ -191,7 +189,7 @@ freshness = 24 / age_hours
 runtime/discovery/candidates_cache.json
 ```
 
-缓存策略：
+当前缓存策略：
 
 - TTL 固定 24 小时。
 - 如果缓存新鲜，跳过 YouTube 搜索，直接从缓存候选重新评分并取 TopN。
@@ -204,6 +202,13 @@ CACHE_FILE = Path("runtime/discovery/candidates_cache.json")
 ```
 
 它没有跟随 `DISCOVERY_DB_PATH` 或工作目录配置变化。
+
+阶段 3 目标是改为配置驱动：
+
+```text
+DISCOVERY_CACHE_PATH=runtime/discovery/candidates_cache.json
+DISCOVERY_CACHE_TTL_SEC=86400
+```
 
 ### 4.4 自动下载
 
@@ -222,7 +227,7 @@ run_discovery_and_download()
 
 下载条件：
 
-- `download_status='pending'`
+- `status='pending'`
 - `score >= DISCOVERY_DOWNLOAD_MIN_SCORE`
 - 每轮最多取 50 条 pending。
 
@@ -256,7 +261,7 @@ DOWNLOAD_INTERVAL_SEC=180
 API 支持手动提交一个 YouTube URL：
 
 ```http
-POST /api/download
+POST /api/downloads
 Content-Type: application/json
 
 {
@@ -276,7 +281,8 @@ Content-Type: application/json
 限制：
 
 - URL 解析使用正则 `(?:v=|/)([a-zA-Z0-9_-]{11})`，能覆盖常见链接，但不够严格。
-- 如果后台下载失败，当前异常只写日志，没有调用 `mark_download_failed()`，这会导致手动下载失败后状态可能停留在 `downloading`。
+- 手动下载和发现下载共用进程内任务锁，同一时间只允许一个后台任务运行。
+- 如果后台下载失败，当前代码会调用 `mark_download_failed()` 落库。
 
 ### 4.6 HTTP API
 
@@ -298,17 +304,19 @@ Authorization: Bearer <API_TOKEN>
 | `GET` | `/api/videos/<id>/file?type=video` | 下载 `.mp4` 视频流 |
 | `GET` | `/api/videos/<id>/file?type=audio` | 下载 `.m4a` 音频流 |
 | `GET` | `/api/videos/<id>/file?type=thumbnail` | 下载封面图 |
-| `DELETE` | `/api/videos/<id>` | 删除磁盘目录并标记 `cleaned` |
+| `POST` | `/api/videos/<id>/confirm-pulled` | 确认本地已拉取，删除磁盘目录并标记 `pulled` |
+| `DELETE` | `/api/videos/<id>/files` | 管理员强制删除磁盘目录并标记 `expired` |
 | `GET` | `/api/stats` | 查询统计 |
-| `POST` | `/api/trigger-discovery` | 后台触发一次发现 + 下载 |
-| `POST` | `/api/download` | 后台下载指定 URL |
+| `POST` | `/api/discovery/run` | 后台触发一次发现 + 下载 |
+| `POST` | `/api/downloads` | 后台下载指定 URL |
 
 `GET /api/videos` 查询参数：
 
 | 参数 | 说明 |
 | --- | --- |
 | `category` | 分类过滤 |
-| `download_status` | 下载状态过滤 |
+| `status` | 状态过滤，推荐使用 |
+| `download_status` | 旧参数，兼容别名 |
 | `min_score` | 最低 score |
 | `limit` | 分页大小，最多 500 |
 | `offset` | 分页偏移 |
@@ -337,7 +345,7 @@ app/disk_cleaner.py::cleanup_if_needed()
 1. 找出超过 `DISK_MAX_RETENTION_DAYS` 的 downloaded 记录。
 2. 如果 downloaded 总大小超过 `DISK_MAX_STORAGE_GB`，按 `downloaded_at` 从旧到新清理。
 3. 删除磁盘目录或文件。
-4. 标记 `download_status='cleaned'`，清空 `file_path` 和 `file_size`。
+4. 标记为 `expired`，清空 `file_dir` 和 `file_size`。
 
 ## 5. 数据库概览
 
@@ -347,10 +355,10 @@ SQLite 默认路径：
 runtime/discovery/discovery.db
 ```
 
-唯一核心表：
+当前唯一核心表：
 
 ```text
-discovered_videos
+videos
 ```
 
 字段：
@@ -361,41 +369,30 @@ discovered_videos
 | `discovered_at` | 入库/刷新时间 |
 | `url` | YouTube URL |
 | `title` | 标题 |
-| `description` | 描述 |
-| `channel_id` | 频道 ID |
 | `channel_title` | 频道名 |
 | `published_at` | 发布时间 |
-| `language_hint` | 语言提示 |
 | `duration_sec` | 时长 |
 | `view_count` | 播放量 |
-| `comment_count` | 评论数，目前多为 0 |
-| `like_count` | 点赞数，目前多为 0 |
 | `keyword` | 命中关键词 |
 | `category` | 分类 |
 | `score` | 热度分 |
-| `status` | 发现状态，当前主要保留字段 |
+| `status` | 唯一视频状态字段 |
 | `raw_json` | 原始搜索 JSON |
-| `download_status` | 下载状态 |
-| `file_path` | 下载目录 |
+| `file_dir` | 下载目录 |
 | `file_size` | 下载目录总大小 |
 | `downloaded_at` | 下载完成或失败时间 |
-| `download_error` | 下载失败原因 |
+| `error` | 下载失败原因 |
 
 下载状态流转：
 
 ```text
 pending -> downloading -> downloaded
 pending -> downloading -> failed
-downloaded -> cleaned
+downloaded -> pulled
+downloaded -> expired
 ```
 
-手动下载可能存在异常状态：
-
-```text
-downloading
-```
-
-因为后台异常时当前没有可靠调用 `mark_download_failed()`。
+手动下载失败已在当前代码中调用 `mark_download_failed()` 落库。
 
 ## 6. 配置概览
 
@@ -417,17 +414,21 @@ downloading
 
 | 配置 | 默认值 | 说明 |
 | --- | --- | --- |
-| `DISCOVERY_ENABLED` | `True` | 当前代码中没有实际用于跳过定时发现 |
 | `DISCOVERY_TOPIC_TYPES` | `pets,beauty,funny` | 启用分类 |
-| `DISCOVERY_DAYS_BACK` | `7` | 配置存在，但 yt-dlp 搜索路径基本没有用它过滤 |
 | `DISCOVERY_MAX_RESULTS_PER_KEYWORD` | `15` | 每个关键词搜索数量，最多 50 |
 | `DISCOVERY_TOP_N` | `5` | 每轮保留候选数量 |
 | `DISCOVERY_MIN_VIEWS` | `10000` | 最低播放量 |
-| `DISCOVERY_MIN_COMMENTS` | `0` | yt-dlp 搜索路径中被忽略 |
 | `DISCOVERY_MIN_DURATION_SEC` | `60` | 最短时长 |
 | `DISCOVERY_MAX_DURATION_SEC` | `1800` | 最长时长 |
 | `DISCOVERY_DOWNLOAD_MIN_SCORE` | `5.0` | 自动下载最低分 |
 | `DISCOVERY_INTERVAL_MINUTES` | `1440` | 定时发现间隔 |
+
+阶段 3 新增：
+
+| 配置 | 默认值 | 说明 |
+| --- | --- | --- |
+| `DISCOVERY_CACHE_PATH` | `runtime/discovery/candidates_cache.json` | 候选缓存路径 |
+| `DISCOVERY_CACHE_TTL_SEC` | `86400` | 候选缓存 TTL |
 
 ### 6.3 API 和存储配置
 
@@ -467,16 +468,15 @@ downloading
 - 手动提交 URL 下载。
 - 按时间和容量清理磁盘。
 - 基础统计接口。
+- 统一 JSON 响应 envelope。
+- 健康检查 `/api/health`。
+- 任务状态 `/api/tasks`。
+- 拉取确认和管理员强制删除分离。
 
 ### 部分具备但需要校正
 
-- 语言过滤：字段通常为空，实际基本放行。
-- 评论/点赞相关评分：yt-dlp 搜索结果拿不到，当前基本无效。
-- `DISCOVERY_DAYS_BACK`：配置存在，但当前 yt-dlp 搜索没有真正按日期过滤。
-- `DISCOVERY_ENABLED`：配置存在，但调度器没有用它跳过后台发现。
-- 手动下载失败状态：异常只写日志，可能不落库。
-- 候选缓存路径：写死到 `runtime/discovery/candidates_cache.json`，不跟随配置。
-- 下载并发控制：自动定时和手动触发都能启动后台线程，缺少全局任务锁。
+- 任务状态仍是进程内内存状态，服务重启后不会保留历史任务。
+- yt-dlp 搜索 provider 仍只有一个，搜索质量和字段完整度有限。
 
 ### 当前不具备
 
@@ -487,7 +487,6 @@ downloading
 - API 级错误码规范。
 - OpenAPI 文档。
 - 结构化日志。
-- 健康检查接口。
 - Range 多段请求支持。
 - 频道黑名单/白名单。
 - 视频去重策略之外的内容相似去重。
@@ -505,10 +504,10 @@ downloading
 4. 给自动发现、手动触发、手动 URL 下载加全局任务锁或任务表，避免并发写同一视频目录。
 5. 手动下载失败必须写入 `failed` 状态。
 6. 缓存路径应从配置派生，或去掉缓存改为明确的任务表。
-7. 统一 DB 字段含义，删除当前没有业务意义的 `status`、`comment_count`、`like_count` 等字段，或改为可空。
-8. 增加 `/api/health`、`/api/jobs`、`/api/jobs/<id>`，方便本地端判断远程服务状态。
-9. 删除远程文件前最好支持“本地确认拉取完成”语义，而不是下载完成后立即不可逆删除。
-10. API 返回结构需要统一，例如所有错误都使用固定格式，所有成功响应都有明确字段。
+7. DB 字段已统一为 `videos.status`，后续可继续收敛 API 兼容别名。
+8. 不可靠的 `language_hint`、`comment_count`、`like_count` 字段及相关配置已删除。
+9. 缓存路径和 TTL 已改为 `DISCOVERY_CACHE_PATH` / `DISCOVERY_CACHE_TTL_SEC`。
+10. `GET /api/videos` 推荐 `status` 查询；如代码保留旧参数，则 `download_status` 只作为兼容别名。
 
 ## 9. 建议的第一版边界
 

@@ -293,7 +293,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
             _error_response(self, 'Video not found', status=404)
             return
 
-        file_path_str = v.get('file_path', '') or ''
+        file_path_str = v.get('file_dir', '') or v.get('file_path', '') or ''
         if not file_path_str:
             _error_response(self, 'Video not downloaded yet', status=404)
             return
@@ -331,7 +331,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
             _error_response(self, 'Video not found', status=404)
             return
 
-        file_path_str = v.get('file_path', '') or ''
+        file_path_str = v.get('file_dir', '') or v.get('file_path', '') or ''
         if not file_path_str:
             _error_response(self, 'Video not downloaded yet', status=404)
             return
@@ -362,7 +362,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
             return
 
         # delete disk files
-        file_path_str = v.get('file_path', '') or ''
+        file_path_str = v.get('file_dir', '') or v.get('file_path', '') or ''
         if file_path_str:
             disk_path = Path(file_path_str)
             if disk_path.exists():
@@ -522,7 +522,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
                 ensure_video_row(db_path, vid, url, category)
                 mark_downloading(db_path, vid)
 
-                download_media(
+                result = download_media(
                     url=url,
                     out_dir=out_dir,
                     cookie_file=settings.cookie_file,
@@ -532,7 +532,14 @@ class _ApiHandler(BaseHTTPRequestHandler):
                 total_size = sum(
                     f.stat().st_size for f in out_dir.rglob('*') if f.is_file()
                 )
-                mark_downloaded(db_path, vid, str(out_dir), total_size)
+                mark_downloaded(
+                    db_path,
+                    vid,
+                    str(out_dir),
+                    total_size,
+                    thumbnail_path=str(result.get('thumbnail_path') or ''),
+                    meta_path=str(out_dir / f'{vid}.video_info.json'),
+                )
                 summary['downloaded'] = True
                 summary['file_size'] = total_size
                 logger.info('Manual download OK: %s (%s) size=%d', vid, url, total_size)

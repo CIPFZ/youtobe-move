@@ -26,9 +26,6 @@ from app.task_state import finish_task, try_start_task
 
 logger = logging.getLogger(__name__)
 
-CACHE_FILE = Path("runtime/discovery/candidates_cache.json")
-CACHE_TTL_SEC = 86400  # 24 hours
-
 
 def _dir_size(path: Path) -> int:
     if not path.exists():
@@ -45,14 +42,16 @@ def _dir_size(path: Path) -> int:
 
 def _load_cache() -> tuple[list[dict], bool]:
     """Return (raw_candidates, fresh). fresh=False means cache expired or missing."""
-    if not CACHE_FILE.exists():
+    cache_file = settings.discovery_cache_path.resolve()
+    if not cache_file.exists():
         return [], False
     try:
-        age = time.time() - CACHE_FILE.stat().st_mtime
-        if age > CACHE_TTL_SEC:
+        age = time.time() - cache_file.stat().st_mtime
+        ttl = max(0, int(settings.discovery_cache_ttl_sec))
+        if ttl == 0 or age > ttl:
             logger.info("Cache expired (age=%.1fh)", age / 3600)
             return [], False
-        data = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
+        data = json.loads(cache_file.read_text(encoding="utf-8"))
         logger.info("Cache hit: %d candidates (age=%.1fh)", len(data), age / 3600)
         return data, True
     except Exception as exc:
@@ -60,17 +59,35 @@ def _load_cache() -> tuple[list[dict], bool]:
         return [], False
 
 
-def _save_cache(raw: list[dict]) -> None:
-    CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_FILE.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+def _normalise_cache_item(item: dict | VideoCandidate) -> dict:
+    if isinstance(item, VideoCandidate):
+        data = asdict(item)
+    else:
+        data = dict(item)
+
+    raw_json = data.get("raw_json")
+    if not isinstance(raw_json, str):
+        data["raw_json"] = json.dumps(raw_json or {}, ensure_ascii=False, default=str)
+    return data
+
+
+def _save_cache(raw: list[dict | VideoCandidate]) -> None:
+    cache_file = settings.discovery_cache_path.resolve()
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(
+        json.dumps([_normalise_cache_item(item) for item in raw], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     logger.info("Cache saved: %d candidates", len(raw))
 
 
 def _dicts_to_candidates(items: list[dict]) -> list[VideoCandidate]:
+    allowed = set(VideoCandidate.__dataclass_fields__)
     out: list[VideoCandidate] = []
     for d in items:
         try:
-            out.append(VideoCandidate(**d))
+            data = _normalise_cache_item(d)
+            out.append(VideoCandidate(**{k: v for k, v in data.items() if k in allowed}))
         except Exception:
             continue
     return out
@@ -139,7 +156,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
             mark_downloading(db_path, vid)
 
             try:
-                download_media(
+                result = download_media(
                     url=str(url),
                     out_dir=out_dir,
                     cookie_file=settings.cookie_file,
@@ -147,7 +164,14 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
                     playlist_strategy=settings.playlist_strategy,
                 )
                 total_size = _dir_size(out_dir)
-                mark_downloaded(db_path, vid, str(out_dir), total_size)
+                mark_downloaded(
+                    db_path,
+                    vid,
+                    str(out_dir),
+                    total_size,
+                    thumbnail_path=str(result.get('thumbnail_path') or ''),
+                    meta_path=str(out_dir / f'{vid}.video_info.json'),
+                )
                 summary["downloaded"] += 1
                 logger.info("Download OK: %s size=%d", vid, total_size)
             except Exception as exc:

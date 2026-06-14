@@ -23,7 +23,7 @@ def cleanup_if_needed(
     """Delete oldest downloaded files until storage is under *max_gb* AND
     no files exceed *max_days* retention.  Returns number of files deleted.
 
-    Only touches records with download_status='downloaded'.
+    Only touches records with status='downloaded'.
     If the on-disk file is already missing the record is still marked expired.
     """
     deleted = 0

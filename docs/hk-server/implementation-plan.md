@@ -254,11 +254,16 @@ app/task_state.py
 
 ## 6. 阶段 3：简化 DB 与配置
 
+当前状态：已实施。`hk-server/app/discovery/repository.py` 已重建为 `videos` 表，内部状态字段统一为 `status`；`VideoCandidate`、DB 和评分逻辑已删除 `language_hint`、`comment_count`、`like_count` 等不可靠字段；发现缓存已改为 `DISCOVERY_CACHE_PATH` / `DISCOVERY_CACHE_TTL_SEC` 配置。
+
 ### 6.1 目标
 
 - 删除第一版中无效或误导字段。
 - 删除无效配置，或让配置真正生效。
 - DB 表结构表达真实业务。
+- 统一视频状态字段为 `status`，API 推荐使用 `status` 查询，同时在过渡期保留旧
+  `download_status` 查询参数兼容本地端。
+- 发现缓存路径和 TTL 配置化，避免运行目录或 DB 路径变化时缓存不可控。
 
 ### 6.2 建议 DB 表
 
@@ -292,7 +297,7 @@ CREATE TABLE videos (
 
 状态字段统一命名为 `status`，不再同时存在 `status` 和 `download_status`。
 
-如果想保留更少字段，第一版也可以删除：
+第一版应删除这些字段：
 
 - `channel_id`
 - `description`
@@ -301,6 +306,23 @@ CREATE TABLE videos (
 - `like_count`
 
 原因：yt-dlp 搜索路径中这些字段为空或不稳定。
+
+下载状态统一写入 `videos.status`：
+
+```text
+pending       已发现，等待下载
+downloading   正在下载
+downloaded    下载完成，可供本地拉取
+pulled        本地已确认拉取，远程文件已删除
+expired       因保留期或容量清理，远程文件已删除
+failed        下载失败
+```
+
+API 层查询规则：
+
+- 推荐：`GET /api/videos?status=downloaded`
+- 兼容：如果代码支持旧参数，`GET /api/videos?download_status=downloaded` 应映射到同一状态过滤。
+- 响应字段应返回 `status`；如需兼容旧本地端，可以短期额外返回 `download_status`，但内部 DB 不再使用它。
 
 ### 6.3 建议任务表
 
@@ -382,9 +404,14 @@ pending -> running -> failed
 ### 6.6 验收标准
 
 - 删除 `runtime/discovery/discovery.db` 后，服务能创建新表并正常运行。
-- `GET /api/videos` 返回字段和新表一致。
+- SQLite 中核心视频表为 `videos`，不再创建新的 `discovered_videos`。
+- `GET /api/videos` 返回字段和新表一致，主状态字段为 `status`。
+- `GET /api/videos?status=downloaded` 能过滤待拉取视频。
+- 如果仍保留兼容层，`GET /api/videos?download_status=downloaded` 与 `status=downloaded` 结果一致。
 - 所有状态只使用一个 `status` 字段。
-- 无效配置从 `settings.py` 删除，文档中不再出现。
+- `language_hint`、`comment_count`、`like_count` 等不可靠字段从模型、DB 和评分逻辑中删除。
+- `DISCOVERY_CACHE_PATH` 和 `DISCOVERY_CACHE_TTL_SEC` 生效。
+- 无效配置从 `settings.py` 删除，或文档明确标注为已废弃。
 
 ## 7. 阶段 4：重构搜索和评分
 
@@ -545,10 +572,13 @@ hk-server/tests/
 
 ### 第 3 批：DB 和配置重构
 
+当前状态：已实施。核心视频表已切换到 `videos`，状态字段为 `status`；发现缓存路径和 TTL 已配置化。
+
 1. 重建 SQLite schema。
 2. 删除无效字段和配置。
 3. cache 路径和 TTL 配置化。
-4. 更新 README。
+4. API 查询推荐 `status`，并在代码支持时兼容旧 `download_status` 参数。
+5. 更新 README。
 
 ### 第 4 批：搜索质量
 
