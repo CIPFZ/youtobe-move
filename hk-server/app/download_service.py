@@ -21,6 +21,7 @@ from app.discovery.repository import (
     upsert_candidates,
 )
 from app.discovery.scoring import dedupe_and_sort
+from app.discovery.providers import get_provider
 from app.discovery.service import discovery_keywords, run_discovery_once
 from app.disk_cleaner import cleanup_if_needed
 from app.downloader import download_media
@@ -34,9 +35,6 @@ from app.task_state import (
 )
 
 logger = logging.getLogger(__name__)
-
-DISCOVERY_PROVIDER = "yt-dlp"
-
 
 def _dir_size(path: Path) -> int:
     if not path.exists():
@@ -53,7 +51,7 @@ def _dir_size(path: Path) -> int:
 
 def _cache_context() -> dict[str, Any]:
     return {
-        "provider": DISCOVERY_PROVIDER,
+        "provider": get_provider(settings.discovery_provider).name,
         "keywords": [asdict(item) for item in discovery_keywords()],
         "search": {
             "max_results_per_keyword": settings.discovery_max_results_per_keyword,

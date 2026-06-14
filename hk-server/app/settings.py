@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     log_level: str = Field(default='INFO')
     log_file: Path = Field(default=Path('runtime/logs/hk-server.log'))
 
-    # ── discovery (candidate collection via yt-dlp) ──
+    # ── discovery (candidate collection via provider) ──
+    discovery_provider: str = Field(default='ytdlp')
     discovery_topic_types: str = Field(default='pets,beauty,funny')
 
     # per-topic keywords

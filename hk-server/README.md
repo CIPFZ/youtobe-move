@@ -18,6 +18,7 @@ hk-server (常驻进程 :8503)
 ├── GET  /api/videos/<id>/file?type=video|audio|thumbnail — 流式下载
 ├── POST /api/videos/<id>/confirm-pulled — 确认拉取，服务器删除
 ├── GET  /api/stats         — 存储统计
+├── POST /api/discovery/preview — 只搜索评分，不保存不下载
 ├── POST /api/discovery/run — 手动触发发现下载
 └── POST /api/downloads     — 手动提交 URL 下载
 ```
@@ -106,6 +107,7 @@ JSON API 错误响应统一为：
 | POST | `/api/videos/<id>/confirm-pulled` | 确认拉取，删除服务器文件并标记 pulled |
 | DELETE | `/api/videos/<id>/files` | 管理员强制删除服务器文件并标记 expired |
 | GET | `/api/stats` | 存储统计 |
+| POST | `/api/discovery/preview` | 只搜索评分，不保存不下载 |
 | POST | `/api/discovery/run` | 手动触发发现下载，返回 `task_id` |
 | POST | `/api/downloads` | 手动提交 URL 下载，返回 `task_id` |
 
@@ -124,6 +126,7 @@ JSON API 错误响应统一为：
 | YTDLP_PROXY | (空) | socks5 代理 |
 | YTDLP_VIDEO_FORMAT | bestvideo[ext=mp4] | 视频格式 |
 | YTDLP_AUDIO_FORMAT | bestaudio[ext=m4a] | 音频格式 |
+| DISCOVERY_PROVIDER | ytdlp | 搜索 provider；当前可用 `ytdlp`，`youtube_api` 为预留入口 |
 | DISCOVERY_TOPIC_TYPES | pets,beauty,funny | 分类 |
 | DISCOVERY_TOP_N | 5 | 每日选取数 |
 | DISCOVERY_INTERVAL_MINUTES | 1440 | 发现周期 |

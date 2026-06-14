@@ -301,6 +301,7 @@ Authorization: Bearer <API_TOKEN>
 | `POST` | `/api/videos/<id>/confirm-pulled` | 确认本地已拉取，删除磁盘目录并标记 `pulled` |
 | `DELETE` | `/api/videos/<id>/files` | 管理员强制删除磁盘目录并标记 `expired` |
 | `GET` | `/api/stats` | 查询统计 |
+| `POST` | `/api/discovery/preview` | 只搜索和评分，不写入 DB、不下载 |
 | `POST` | `/api/discovery/run` | 后台触发一次发现 + 下载 |
 | `POST` | `/api/downloads` | 后台下载指定 URL |
 
@@ -408,6 +409,7 @@ downloaded -> expired
 
 | 配置 | 默认值 | 说明 |
 | --- | --- | --- |
+| `DISCOVERY_PROVIDER` | `ytdlp` | 搜索 provider；当前可用 `ytdlp`，`youtube_api` 为预留入口 |
 | `DISCOVERY_TOPIC_TYPES` | `pets,beauty,funny` | 启用分类 |
 | `DISCOVERY_MAX_RESULTS_PER_KEYWORD` | `15` | 每个关键词搜索数量，最多 50 |
 | `DISCOVERY_TOP_N` | `5` | 每轮保留候选数量 |

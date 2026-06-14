@@ -419,6 +419,11 @@ pending -> running -> failed
 `api_key` 等 YouTube API 兼容参数；评分只依赖播放量和发布时间，时长只做过滤；
 发现缓存已写入 `provider`、`keywords`、`search` 和 `items`，关键词或过滤配置变化时不会复用旧缓存。
 
+V3 第一批状态：已实施。搜索实现已拆到 `app/discovery/providers/`，通过
+`DISCOVERY_PROVIDER=ytdlp` 选择当前 provider；`youtube_api` provider 保留为明确
+unsupported 的预留入口。新增 `POST /api/discovery/preview`，用于只搜索和评分，
+不会写入 DB 或下载文件。
+
 ### 7.1 目标
 
 - 明确搜索只走 yt-dlp，删除 YouTube API 兼容参数。

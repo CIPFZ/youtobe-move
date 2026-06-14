@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
+from typing import Any
 
 from app.discovery.models import VideoCandidate
+from app.discovery.providers import get_provider
+from app.discovery.providers.base import SearchKeyword
 from app.discovery.scoring import dedupe_and_sort
-from app.discovery.youtube_discovery import SearchKeyword, discover_candidates
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -59,8 +62,9 @@ def run_discovery_once(*, top_n: int = 0) -> tuple[list[VideoCandidate], list[Vi
         raise RuntimeError('DISCOVERY_TOPIC_TYPES or DISCOVERY_KEYWORDS is empty')
 
     top = top_n if top_n > 0 else settings.discovery_top_n
+    provider = get_provider(settings.discovery_provider)
 
-    raw = discover_candidates(
+    raw = provider.search(
         keywords=keywords,
         max_results_per_keyword=settings.discovery_max_results_per_keyword,
         min_views=settings.discovery_min_views,
@@ -68,5 +72,19 @@ def run_discovery_once(*, top_n: int = 0) -> tuple[list[VideoCandidate], list[Vi
         max_duration_sec=settings.discovery_max_duration_sec,
     )
     selected = dedupe_and_sort(raw, top_n=top)
-    logger.info('Daily discovery selected=%d (raw=%d)', len(selected), len(raw))
+    logger.info(
+        'Daily discovery selected=%d (raw=%d provider=%s)',
+        len(selected), len(raw), provider.name,
+    )
     return raw, selected
+
+
+def discovery_preview(*, top_n: int = 0) -> dict[str, Any]:
+    raw, selected = run_discovery_once(top_n=top_n)
+    return {
+        "provider": get_provider(settings.discovery_provider).name,
+        "raw_count": len(raw),
+        "selected_count": len(selected),
+        "items": [asdict(item) for item in selected],
+        "raw_items": [asdict(item) for item in raw],
+    }

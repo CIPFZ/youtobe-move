@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from app.discovery.providers.base import UnsupportedProviderError
 from app.discovery.repository import (
     count_video_events,
     count_videos,
@@ -276,6 +277,10 @@ class _ApiHandler(BaseHTTPRequestHandler):
 
         if path == '/api/discovery/run':
             self._handle_trigger_discovery()
+            return
+
+        if path == '/api/discovery/preview':
+            self._handle_discovery_preview()
             return
 
         if path == '/api/downloads':
@@ -588,6 +593,45 @@ class _ApiHandler(BaseHTTPRequestHandler):
         """Start discovery+download in a background thread, return immediately."""
         self._start_discovery_task()
 
+    def _read_json_body(self) -> tuple[dict[str, object] | None, str]:
+        content_length = int(self.headers.get('Content-Length', 0))
+        if content_length == 0:
+            return {}, ''
+        try:
+            body = json.loads(self.rfile.read(content_length))
+        except Exception:
+            return None, 'Invalid JSON body'
+        if not isinstance(body, dict):
+            return None, 'JSON body must be an object'
+        return body, ''
+
+    def _handle_discovery_preview(self) -> None:
+        body, error = self._read_json_body()
+        if error:
+            _error_response(self, error, status=400)
+            return
+
+        top_n_raw = body.get('top_n') if body else None
+        top_n = 0
+        if top_n_raw not in (None, ''):
+            try:
+                top_n = int(top_n_raw)
+            except (TypeError, ValueError):
+                _error_response(self, 'Invalid top_n', status=400)
+                return
+            if top_n < 0:
+                _error_response(self, 'Invalid top_n', status=400)
+                return
+
+        try:
+            from app.discovery.service import discovery_preview
+            _success_response(self, discovery_preview(top_n=top_n))
+        except UnsupportedProviderError as exc:
+            _error_response(self, str(exc), status=400, code='unsupported_provider')
+        except Exception as exc:
+            logger.error('Discovery preview failed: %s', exc, exc_info=True)
+            _error_response(self, f'Discovery preview failed: {exc}', status=500)
+
     def _start_discovery_task(self, input_data: dict[str, object] | None = None) -> None:
         task = try_start_task('discovery_download', input_data=input_data)
         if task is None:
@@ -627,15 +671,12 @@ class _ApiHandler(BaseHTTPRequestHandler):
         Body: {"url": "https://www.youtube.com/watch?v=xxx", "category": "pets"}
         Returns video_id immediately, download runs in background.
         """
-        content_length = int(self.headers.get('Content-Length', 0))
-        if content_length == 0:
+        body, error = self._read_json_body()
+        if body is not None and not body:
             _error_response(self, 'Empty request body', status=400)
             return
-
-        try:
-            body = json.loads(self.rfile.read(content_length))
-        except Exception:
-            _error_response(self, 'Invalid JSON body', status=400)
+        if error:
+            _error_response(self, error, status=400)
             return
 
         url = str(body.get('url', '') or '').strip()

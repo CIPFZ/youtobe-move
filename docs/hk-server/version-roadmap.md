@@ -256,6 +256,11 @@ class DiscoveryProvider:
 
 V3 不一定默认启用 YouTube API，但代码结构要允许切换。
 
+当前状态：第一批已实施。发现层已新增 `app/discovery/providers/`
+抽象，`DISCOVERY_PROVIDER` 默认使用 `ytdlp`；`youtube_api` 作为显式预留
+provider，当前会返回“不支持”的明确错误。`POST /api/discovery/preview`
+已可只执行搜索和评分，不写入 DB、不触发下载。
+
 ### 4.3 搜索策略
 
 新增策略配置：
@@ -313,7 +318,11 @@ POST /api/discovery/run
 GET  /api/discovery/runs/<task_id>/candidates
 ```
 
-`/api/discovery/preview` 只搜索和评分，不下载，方便调关键词。
+`/api/discovery/preview` 只搜索和评分，不下载，方便调关键词。请求体可选：
+
+```json
+{"top_n": 5}
+```
 
 ### 4.7 验收标准
 
