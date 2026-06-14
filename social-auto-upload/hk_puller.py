@@ -83,21 +83,43 @@ def _auth_headers() -> dict[str, str]:
     return h
 
 
+def _unwrap_hk_data(payload: Any, endpoint: str) -> Any:
+    """Return the data payload from the new HK API envelope, accepting legacy JSON."""
+    if not isinstance(payload, dict):
+        return payload
+
+    if "ok" in payload:
+        if payload.get("ok") is not True:
+            raise RuntimeError(f"HK API {endpoint} returned error: {payload}")
+        return payload.get("data")
+
+    return payload
+
+
 # ── HK API calls ──
 
 def fetch_hk_videos(status: str = "downloaded", limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
     url = f"{HK_SERVER_URL.rstrip('/')}/api/videos"
-    params: dict[str, Any] = {"download_status": status, "limit": limit, "offset": offset}
+    params: dict[str, Any] = {"status": status, "limit": limit, "offset": offset}
     resp = _hk_session.get(url, params=params, headers=_auth_headers(), timeout=30)
     resp.raise_for_status()
-    return list(resp.json().get("videos", []))
+    data = _unwrap_hk_data(resp.json(), "/api/videos")
+
+    if isinstance(data, dict):
+        if "items" in data:
+            return list(data.get("items") or [])
+        return list(data.get("videos") or [])
+    if isinstance(data, list):
+        return data
+    return []
 
 
 def fetch_hk_stats() -> dict[str, Any]:
     url = f"{HK_SERVER_URL.rstrip('/')}/api/stats"
     resp = _hk_session.get(url, headers=_auth_headers(), timeout=30)
     resp.raise_for_status()
-    return resp.json()
+    data = _unwrap_hk_data(resp.json(), "/api/stats")
+    return data if isinstance(data, dict) else {}
 
 
 def download_hk_file(video_id: str, file_type: str, dest_path: Path, max_retries: int = 3) -> bool:
@@ -151,14 +173,25 @@ def download_hk_meta(video_id: str) -> dict[str, Any]:
     url = f"{HK_SERVER_URL.rstrip('/')}/api/videos/{video_id}/meta"
     resp = _hk_session.get(url, headers=_auth_headers(), timeout=30)
     resp.raise_for_status()
-    return resp.json()
+    data = _unwrap_hk_data(resp.json(), f"/api/videos/{video_id}/meta")
+    return data if isinstance(data, dict) else {}
 
 
 def delete_hk_video(video_id: str) -> bool:
-    """Notify HK server that video has been pulled (deletes server-side files)."""
-    url = f"{HK_SERVER_URL.rstrip('/')}/api/videos/{video_id}"
-    resp = _hk_session.delete(url, headers=_auth_headers(), timeout=30)
-    return resp.status_code == 200
+    """Notify HK server that video has been pulled."""
+    url = f"{HK_SERVER_URL.rstrip('/')}/api/videos/{video_id}/confirm-pulled"
+    resp = _hk_session.post(url, headers=_auth_headers(), timeout=30)
+    if not 200 <= resp.status_code < 300:
+        return False
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        return True
+
+    if isinstance(payload, dict) and "ok" in payload:
+        return payload.get("ok") is True
+    return True
 
 
 # ── ffmpeg merge (auto-detect AV1 → GPU transcode to H.264) ──

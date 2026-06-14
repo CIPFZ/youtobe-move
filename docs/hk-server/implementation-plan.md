@@ -520,6 +520,22 @@ hk-server/tests/
 
 ### 第 2 批：API 契约
 
+当前状态：已实施。完成内容：
+
+- JSON API 成功响应统一为 `{"ok": true, "data": ...}`。
+- JSON API 错误响应统一为 `{"ok": false, "error": {"code": "...", "message": "..."}}`。
+- 分页视频列表改为 `data.items/total/limit/offset`。
+- `GET /api/videos/<id>` 直接返回 `data` 中的视频对象。
+- `GET /api/videos/<id>/meta` 直接返回 `data` 中的 metadata。
+- `GET /api/stats`、`GET /api/health`、`GET /api/tasks` 使用统一 envelope。
+- 文件下载接口继续返回裸文件流，不包 JSON。
+- 主接口切换为：
+  - `POST /api/discovery/run`
+  - `POST /api/downloads`
+  - `POST /api/videos/<id>/confirm-pulled`
+  - `DELETE /api/videos/<id>/files`
+- 本地拉取端 `social-auto-upload/hk_puller.py` 已适配新 envelope 和 confirm-pulled。
+
 1. 统一 JSON 响应格式。
 2. 替换旧接口：
    - `/api/trigger-discovery` -> `/api/discovery/run`
@@ -555,14 +571,14 @@ hk-server/tests/
 
 - 新增 `app/task_state.py`。
 - `run_discovery_and_download()` 接入任务锁和任务状态。
-- `/api/trigger-discovery` 与 `/api/discovery/run` 在启动后台线程前抢占任务锁。
-- `/api/download` 与 `/api/downloads` 在 URL 无法解析 `video_id` 时直接返回 400。
+- `/api/discovery/run` 在启动后台线程前抢占任务锁。
+- `/api/downloads` 在 URL 无法解析 `video_id` 时直接返回 400。
 - 手动下载失败会调用 `mark_download_failed()` 落库。
 - 新增 `mark_pulled()` 和 `mark_expired()`。
 - disk cleaner 清理后标记 `expired`。
-- 拉取确认和旧 `DELETE /api/videos/<id>` 删除文件后标记 `pulled`。
+- 拉取确认 `POST /api/videos/<id>/confirm-pulled` 删除文件后标记 `pulled`。
 - 新增 `GET /api/health` 和 `GET /api/tasks`。
-- 保留旧接口作为别名，降低本地端联调风险。
+- 第二批已移除旧主接口，统一使用新 API 契约。
 
 ### 10.1 新增任务状态模块
 
@@ -662,8 +678,8 @@ curl http://127.0.0.1:8503/api/tasks
 重复触发：
 
 ```bash
-curl -X POST http://127.0.0.1:8503/api/trigger-discovery
-curl -X POST http://127.0.0.1:8503/api/trigger-discovery
+curl -X POST http://127.0.0.1:8503/api/discovery/run
+curl -X POST http://127.0.0.1:8503/api/discovery/run
 ```
 
 预期第二次不会启动第二个任务。
@@ -671,7 +687,7 @@ curl -X POST http://127.0.0.1:8503/api/trigger-discovery
 手动下载失败测试：
 
 ```bash
-curl -X POST http://127.0.0.1:8503/api/download \
+curl -X POST http://127.0.0.1:8503/api/downloads \
   -H 'Content-Type: application/json' \
   -d '{"url":"https://www.youtube.com/watch?v=invalidxxxx","category":"manual"}'
 ```

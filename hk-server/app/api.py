@@ -34,8 +34,31 @@ def _json_response(handler: BaseHTTPRequestHandler, data: object, status: int = 
     handler.wfile.write(body)
 
 
-def _error_response(handler: BaseHTTPRequestHandler, message: str, status: int = 400) -> None:
-    _json_response(handler, {'error': True, 'message': message}, status=status)
+def _success_response(handler: BaseHTTPRequestHandler, data: object, status: int = 200) -> None:
+    _json_response(handler, {'ok': True, 'data': data}, status=status)
+
+
+def _error_response(
+    handler: BaseHTTPRequestHandler,
+    message: str,
+    status: int = 400,
+    code: str = '',
+    details: object | None = None,
+) -> None:
+    if not code:
+        code = {
+            400: 'bad_request',
+            401: 'unauthorized',
+            404: 'not_found',
+            409: 'conflict',
+            416: 'range_not_satisfiable',
+            500: 'internal_error',
+            503: 'unavailable',
+        }.get(status, 'error')
+    error: dict[str, object] = {'code': code, 'message': message}
+    if details is not None:
+        error['details'] = details
+    _json_response(handler, {'ok': False, 'error': error}, status=status)
 
 
 def _check_auth(handler: BaseHTTPRequestHandler) -> bool:
@@ -198,12 +221,12 @@ class _ApiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip('/')
 
-        if path.startswith('/api/videos/'):
+        if path.startswith('/api/videos/') and path.endswith('/files'):
             video_id = _parse_video_id(path)
             if not video_id:
                 _error_response(self, 'Invalid video_id', status=400)
                 return
-            self._handle_delete_video(video_id)
+            self._handle_delete_video(video_id, mark_as='expired')
             return
 
         _error_response(self, 'Not found', status=404)
@@ -215,11 +238,11 @@ class _ApiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip('/')
 
-        if path in {'/api/trigger-discovery', '/api/discovery/run'}:
+        if path == '/api/discovery/run':
             self._handle_trigger_discovery()
             return
 
-        if path in {'/api/download', '/api/downloads'}:
+        if path == '/api/downloads':
             self._handle_post_download()
             return
 
@@ -236,7 +259,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
 
     def _handle_list_videos(self, qs: dict[str, list[str]]) -> None:
         category = (qs.get('category') or [''])[0].strip()
-        ds = (qs.get('download_status') or [''])[0].strip()
+        ds = (qs.get('download_status') or qs.get('status') or [''])[0].strip()
         min_score = float((qs.get('min_score') or ['0'])[0] or 0)
         limit = int((qs.get('limit') or ['50'])[0] or 50)
         offset = int((qs.get('offset') or ['0'])[0] or 0)
@@ -248,8 +271,8 @@ class _ApiHandler(BaseHTTPRequestHandler):
             min_score=min_score, limit=limit, offset=offset,
         )
 
-        _json_response(self, {
-            'videos': videos,
+        _success_response(self, {
+            'items': videos,
             'total': total,
             'limit': limit,
             'offset': offset,
@@ -261,7 +284,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
         if v is None:
             _error_response(self, 'Video not found', status=404)
             return
-        _json_response(self, {'video': v})
+        _success_response(self, v)
 
     def _handle_get_file(self, video_id: str, file_type: str) -> None:
         db_path = settings.discovery_db_path.resolve()
@@ -329,9 +352,9 @@ class _ApiHandler(BaseHTTPRequestHandler):
             _error_response(self, f'Failed to read metadata: {exc}', status=500)
             return
 
-        _json_response(self, data)
+        _success_response(self, data)
 
-    def _handle_delete_video(self, video_id: str) -> None:
+    def _handle_delete_video(self, video_id: str, *, mark_as: str = 'pulled') -> None:
         db_path = settings.discovery_db_path.resolve()
         v = get_video_by_id(db_path, video_id)
         if v is None:
@@ -352,11 +375,16 @@ class _ApiHandler(BaseHTTPRequestHandler):
                     _error_response(self, f'Failed to delete files: {exc}', status=500)
                     return
 
-        mark_pulled(db_path, video_id)
-        _json_response(self, {'deleted': True, 'pulled': True, 'video_id': video_id})
+        if mark_as == 'pulled':
+            mark_pulled(db_path, video_id)
+            _success_response(self, {'deleted': True, 'status': 'pulled', 'video_id': video_id})
+        else:
+            from app.discovery.repository import mark_expired
+            mark_expired(db_path, video_id)
+            _success_response(self, {'deleted': True, 'status': 'expired', 'video_id': video_id})
 
     def _handle_confirm_pulled(self, video_id: str) -> None:
-        self._handle_delete_video(video_id)
+        self._handle_delete_video(video_id, mark_as='pulled')
 
     def _handle_health(self) -> None:
         db_path = settings.discovery_db_path.resolve()
@@ -379,10 +407,8 @@ class _ApiHandler(BaseHTTPRequestHandler):
         except Exception:
             download_dir_ok = False
 
-        status = 200 if db_ok and download_dir_ok else 503
-        _json_response(self, {
+        data = {
             'service': 'hk-server',
-            'ok': db_ok and download_dir_ok,
             'db_ok': db_ok,
             'db_error': db_error,
             'download_dir_ok': download_dir_ok,
@@ -390,25 +416,36 @@ class _ApiHandler(BaseHTTPRequestHandler):
             'disk_free_gb': disk_free_gb,
             'api_auth_enabled': bool(settings.api_token.strip()),
             'task': get_task_state(),
-        }, status=status)
+        }
+        if db_ok and download_dir_ok:
+            _success_response(self, data)
+            return
+        _error_response(
+            self,
+            'Health check failed',
+            status=503,
+            code='health_check_failed',
+            details=data,
+        )
 
     def _handle_tasks(self) -> None:
-        _json_response(self, get_task_state())
+        _success_response(self, get_task_state())
 
     def _handle_stats(self) -> None:
         db_path = settings.discovery_db_path.resolve()
         stats = get_storage_stats(db_path)
-        _json_response(self, stats)
+        _success_response(self, stats)
 
     def _handle_trigger_discovery(self) -> None:
         """Start discovery+download in a background thread, return immediately."""
         if not try_start_task('discovery_download'):
-            _json_response(self, {
-                'started': False,
-                'skipped': True,
-                'reason': 'task_running',
-                'task': get_task_state(),
-            }, status=409)
+            _error_response(
+                self,
+                'A background task is already running',
+                status=409,
+                code='task_running',
+                details={'task': get_task_state()},
+            )
             return
 
         def _bg() -> None:
@@ -425,7 +462,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
 
         t = threading.Thread(target=_bg, daemon=True)
         t.start()
-        _json_response(self, {'started': True, 'message': 'Discovery + download triggered in background'})
+        _success_response(self, {'started': True, 'message': 'Discovery + download triggered in background'})
 
     def _handle_post_download(self) -> None:
         """POST /api/download — download a specific YouTube URL.
@@ -456,12 +493,13 @@ class _ApiHandler(BaseHTTPRequestHandler):
             return
 
         if not try_start_task('manual_download'):
-            _json_response(self, {
-                'started': False,
-                'skipped': True,
-                'reason': 'task_running',
-                'task': get_task_state(),
-            }, status=409)
+            _error_response(
+                self,
+                'A background task is already running',
+                status=409,
+                code='task_running',
+                details={'task': get_task_state()},
+            )
             return
 
         def _bg() -> None:
@@ -517,7 +555,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
         t = threading.Thread(target=_bg, daemon=True)
         t.start()
 
-        _json_response(self, {'started': True, 'video_id': vid, 'url': url})
+        _success_response(self, {'started': True, 'video_id': vid, 'url': url})
 
     def log_message(self, fmt: str, *args: object) -> None:
         logger.debug('API %s', fmt % args)

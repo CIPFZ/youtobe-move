@@ -7,13 +7,16 @@
 ```
 hk-server (常驻进程 :8503)
 ├── 后台定时器 — 周期执行发现 + 下载
+├── GET  /api/health        — 健康检查
+├── GET  /api/tasks         — 当前/最近任务状态
 ├── GET  /api/videos        — 视频列表（状态/分页）
 ├── GET  /api/videos/<id>   — 视频详情
 ├── GET  /api/videos/<id>/meta  — 完整元信息 JSON
 ├── GET  /api/videos/<id>/file?type=video|audio|thumbnail — 流式下载
-├── DELETE /api/videos/<id> — 确认拉取，服务器删除
+├── POST /api/videos/<id>/confirm-pulled — 确认拉取，服务器删除
 ├── GET  /api/stats         — 存储统计
-└── POST /api/trigger-discovery — 手动触发
+├── POST /api/discovery/run — 手动触发发现下载
+└── POST /api/downloads     — 手动提交 URL 下载
 ```
 
 ## 依赖
@@ -55,17 +58,35 @@ hk-server
 
 ## API
 
+JSON API 成功响应统一为：
+
+```json
+{"ok": true, "data": {}}
+```
+
+JSON API 错误响应统一为：
+
+```json
+{"ok": false, "error": {"code": "not_found", "message": "Video not found"}}
+```
+
+文件下载接口直接返回文件流，不包 JSON。
+
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| GET | `/api/health` | 健康检查 |
+| GET | `/api/tasks` | 当前/最近任务状态 |
 | GET | `/api/videos?download_status=downloaded` | 待拉取列表 |
 | GET | `/api/videos/<id>` | 视频详情 |
 | GET | `/api/videos/<id>/meta` | 完整 .video_info.json |
 | GET | `/api/videos/<id>/file?type=video` | 下载视频流(.mp4) |
 | GET | `/api/videos/<id>/file?type=audio` | 下载音频流(.m4a) |
 | GET | `/api/videos/<id>/file?type=thumbnail` | 下载封面图 |
-| DELETE | `/api/videos/<id>` | 确认拉取，删除服务器文件 |
+| POST | `/api/videos/<id>/confirm-pulled` | 确认拉取，删除服务器文件并标记 pulled |
+| DELETE | `/api/videos/<id>/files` | 管理员强制删除服务器文件并标记 expired |
 | GET | `/api/stats` | 存储统计 |
-| POST | `/api/trigger-discovery` | 手动触发 |
+| POST | `/api/discovery/run` | 手动触发发现下载 |
+| POST | `/api/downloads` | 手动提交 URL 下载 |
 
 ## 配置
 
