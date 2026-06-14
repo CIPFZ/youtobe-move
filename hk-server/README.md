@@ -42,6 +42,18 @@ pip install -e .
 hk-server              # 启动常驻服务
 ```
 
+## 测试
+
+离线单元测试不访问 YouTube 网络：
+
+```bash
+cd hk-server
+pip install -e ".[dev]"
+pytest
+```
+
+部署后的手动检查见 [smoke-test.md](../docs/hk-server/smoke-test.md)。
+
 ## 运行模式
 
 ### hk-server (常驻) — 推荐

@@ -500,6 +500,11 @@ DISCOVERY_CACHE_TTL_SEC=86400
 
 ## 8. 阶段 5：测试、文档和运行保障
 
+当前状态：已实施第一轮。已新增 `hk-server/tests/` 离线 pytest 测试，覆盖
+repository、scoring、disk_cleaner、api helper 和 task_state；`pyproject.toml`
+已增加 `dev` 测试依赖和 pytest 配置；新增 `docs/hk-server/smoke-test.md`
+记录自动测试、健康检查、任务锁 smoke、手动下载 smoke、systemd 示例和日志轮转建议。
+
 ### 8.1 测试范围
 
 优先写不依赖 YouTube 网络的测试。
@@ -532,15 +537,16 @@ hk-server/tests/
 | `hk-server/README.md` | 改为新 API、新状态、新配置 |
 | `docs/hk-server-design.md` | 如保留，更新为新设计；否则删除旧设计文档 |
 | `docs/hk-server-function-overview.md` | 重构完成后更新功能现状 |
+| `docs/hk-server/smoke-test.md` | 新增部署后 smoke 和运行保障步骤 |
 
 ### 8.4 运行保障
 
-建议补充：
+已补充第一版：
 
 - systemd service 示例。
 - `.env.example`。
 - 日志轮转建议。
-- 最小磁盘空间检查。
+- 磁盘空间检查。
 - `curl /api/health` 检查示例。
 
 ## 9. 建议执行顺序

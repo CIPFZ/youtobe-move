@@ -15,9 +15,18 @@ dependencies = [
     "socksio>=1.0.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
 [project.scripts]
 hk-scheduler = "app.scheduler:run_scheduler"
 hk-server = "app.scheduler:run_server"
 
 [tool.setuptools.packages.find]
 include = ["app", "app.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

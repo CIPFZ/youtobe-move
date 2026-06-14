@@ -448,7 +448,7 @@ downloaded -> expired
 - yt-dlp 搜索候选。
 - 播放量、时长过滤。
 - 热度评分和 TopN。
-- 候选 24 小时缓存。
+- 候选缓存，路径、TTL 和关键词匹配由配置控制。
 - SQLite 去重和状态记录。
 - 自动下载 pending 高分视频。
 - 下载视频流 `.mp4`。
@@ -466,6 +466,8 @@ downloaded -> expired
 - 健康检查 `/api/health`。
 - 任务状态 `/api/tasks`。
 - 拉取确认和管理员强制删除分离。
+- 离线 pytest 覆盖 repository、scoring、disk_cleaner、API helper 和 task_state。
+- 部署后 smoke、systemd 示例和日志轮转建议文档。
 
 ### 部分具备但需要校正
 
