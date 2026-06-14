@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.error import URLError
 from urllib.request import ProxyHandler, Request, build_opener, urlopen
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -95,7 +95,17 @@ def _stream_candidates(stream_kind: str) -> list[str]:
     return candidates
 
 
-def _download_stream(normalized_url: str, out_dir: Path, stream_kind: str, cookie_file: str, proxy_url: str) -> tuple[dict[str, Any], Path]:
+ProgressCallback = Callable[[dict[str, Any]], None]
+
+
+def _download_stream(
+    normalized_url: str,
+    out_dir: Path,
+    stream_kind: str,
+    cookie_file: str,
+    proxy_url: str,
+    progress_callback: ProgressCallback | None = None,
+) -> tuple[dict[str, Any], Path]:
     last_exc: Exception | None = None
     info: dict[str, Any] | None = None
 
@@ -106,6 +116,8 @@ def _download_stream(normalized_url: str, out_dir: Path, stream_kind: str, cooki
             'outtmpl': str(out_dir / '%(id)s.%(ext)s'),
             'format': selector,
         }
+        if progress_callback is not None:
+            opts['progress_hooks'] = [progress_callback]
         if cookie_file:
             opts['cookiefile'] = cookie_file
         if proxy_url:
@@ -197,6 +209,7 @@ def download_media(
     cookie_file: str = '',
     proxy_url: str = '',
     playlist_strategy: str = 'first',
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Download YouTube video as two separate streams: video-only mp4 + audio-only m4a.
 
@@ -216,14 +229,51 @@ def download_media(
                 normalized_url, proxy_url or 'none',
                 settings.ytdlp_video_format, settings.ytdlp_audio_format, out_dir)
 
+    def _emit_progress(stream_kind: str, start: float, span: float) -> ProgressCallback:
+        def _hook(status: dict[str, Any]) -> None:
+            if progress_callback is None:
+                return
+            total = status.get('total_bytes') or status.get('total_bytes_estimate') or 0
+            downloaded = status.get('downloaded_bytes') or 0
+            percent = start
+            if total:
+                percent = start + span * min(float(downloaded) / float(total), 1.0)
+            if status.get('status') == 'finished':
+                percent = start + span
+            progress_callback({
+                'stream': stream_kind,
+                'status': status.get('status') or '',
+                'progress': round(percent, 2),
+                'downloaded_bytes': downloaded,
+                'total_bytes': total,
+                'filename': status.get('filename') or '',
+            })
+        return _hook
+
     # Download video stream (no audio)
-    video_info, video_path = _download_stream(normalized_url, out_dir, 'video', cookie_file, proxy_url)
+    video_info, video_path = _download_stream(
+        normalized_url,
+        out_dir,
+        'video',
+        cookie_file,
+        proxy_url,
+        _emit_progress('video', 0.0, 50.0),
+    )
 
     # Download audio stream
-    _audio_info, audio_path = _download_stream(normalized_url, out_dir, 'audio', cookie_file, proxy_url)
+    _audio_info, audio_path = _download_stream(
+        normalized_url,
+        out_dir,
+        'audio',
+        cookie_file,
+        proxy_url,
+        _emit_progress('audio', 50.0, 45.0),
+    )
 
     # Download thumbnail
     thumbnail_path, thumbnail_meta = _download_best_thumbnail(video_info, out_dir, proxy_url=proxy_url)
+    if progress_callback is not None:
+        progress_callback({'stream': 'metadata', 'status': 'finished', 'progress': 100.0})
 
     # Build + save metadata
     metadata = _build_video_metadata(

@@ -214,6 +214,34 @@ def mark_downloading(db_path: Path, video_id: str, task_id: int | None = None) -
     add_video_event(db_path, video_id, 'downloading', 'Download started', task_id=task_id)
 
 
+def update_download_progress(
+    db_path: Path,
+    video_id: str,
+    progress: float,
+    *,
+    task_id: int | None = None,
+    message: str = '',
+) -> None:
+    bounded = max(0.0, min(float(progress), 100.0))
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            UPDATE videos
+            SET download_progress=?, task_id=COALESCE(?, task_id)
+            WHERE video_id=?
+            """,
+            (bounded, task_id, video_id),
+        )
+    add_video_event(
+        db_path,
+        video_id,
+        'progress',
+        message or f'Download progress {bounded:.1f}%',
+        {'progress': bounded},
+        task_id=task_id,
+    )
+
+
 def ensure_video_row(db_path: Path, video_id: str, url: str, category: str) -> None:
     now = _now()
     with sqlite3.connect(db_path) as conn:

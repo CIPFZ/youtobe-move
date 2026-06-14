@@ -16,6 +16,7 @@ from app.discovery.repository import (
     mark_download_failed,
     mark_downloaded,
     mark_downloading,
+    update_download_progress,
     upsert_candidates,
 )
 from app.discovery.scoring import dedupe_and_sort
@@ -146,6 +147,28 @@ def _candidates_to_dicts(candidates: list[VideoCandidate]) -> list[dict]:
     return [asdict(c) for c in candidates]
 
 
+def make_progress_callback(db_path, video_id: str, task_id: int | None):
+    last_progress = -1.0
+
+    def _callback(progress: dict[str, Any]) -> None:
+        nonlocal last_progress
+        value = float(progress.get('progress') or 0)
+        status = str(progress.get('status') or '')
+        if value < 100 and value - last_progress < 5 and status != 'finished':
+            return
+        last_progress = value
+        update_download_progress(
+            db_path,
+            video_id,
+            value,
+            task_id=task_id,
+            message=f"{progress.get('stream', 'download')} {status or 'progress'} {value:.1f}%",
+        )
+        record_task_event('download_progress', f"{video_id} {value:.1f}%", {'video_id': video_id, **progress})
+
+    return _callback
+
+
 def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
     if not task_started and try_start_task("discovery_download") is None:
         logger.info("Discovery/download task already running, skipping")
@@ -235,6 +258,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
                     cookie_file=settings.cookie_file,
                     proxy_url=settings.ytdlp_proxy,
                     playlist_strategy=settings.playlist_strategy,
+                    progress_callback=make_progress_callback(db_path, vid, task_id),
                 )
                 total_size = _dir_size(out_dir)
                 mark_downloaded(

@@ -19,6 +19,7 @@ from app.discovery.repository import (
     mark_pulled,
 )
 from app.settings import settings
+from app.download_service import make_progress_callback
 from app.task_state import (
     finish_task,
     get_current_task_id,
@@ -677,6 +678,7 @@ class _ApiHandler(BaseHTTPRequestHandler):
                     cookie_file=settings.cookie_file,
                     proxy_url=settings.ytdlp_proxy,
                     playlist_strategy=settings.playlist_strategy,
+                    progress_callback=make_progress_callback(db_path, vid, task_id),
                 )
                 total_size = sum(
                     f.stat().st_size for f in out_dir.rglob('*') if f.is_file()

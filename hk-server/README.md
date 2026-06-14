@@ -158,6 +158,9 @@ task_events
 video_events
 ```
 
+`videos.download_progress` 由 yt-dlp progress hook 更新：video stream 映射到
+`0-50`，audio stream 映射到 `50-95`，metadata/thumbnail 完成后为 `100`。
+
 状态集合：
 
 ```text

@@ -2,6 +2,7 @@ import sqlite3
 
 from app.discovery.models import VideoCandidate
 from app.discovery import repository as repo
+from app.download_service import make_progress_callback
 
 
 def test_repository_schema_and_status_flow(tmp_path):
@@ -66,6 +67,25 @@ def test_repository_schema_and_status_flow(tmp_path):
     events = repo.list_video_events(db_path, "abc123def45")
     assert [event["event_type"] for event in events] == ["downloading", "downloaded", "pulled"]
     assert events[0]["task_id"] == 42
+
+
+def test_progress_callback_updates_video_progress_and_events(tmp_path):
+    db_path = tmp_path / "discovery.db"
+    repo.init_db(db_path)
+    repo.ensure_video_row(db_path, "progressvid", "https://youtube.com/watch?v=progressvid", "manual")
+    repo.mark_downloading(db_path, "progressvid", task_id=7)
+
+    callback = make_progress_callback(db_path, "progressvid", task_id=7)
+    callback({"stream": "video", "status": "downloading", "progress": 10.0})
+    callback({"stream": "video", "status": "downloading", "progress": 12.0})
+    callback({"stream": "audio", "status": "finished", "progress": 55.0})
+
+    video = repo.get_video_by_id(db_path, "progressvid")
+    assert video["download_progress"] == 55.0
+
+    events = repo.list_video_events(db_path, "progressvid")
+    progress_events = [event for event in events if event["event_type"] == "progress"]
+    assert [event["data"]["progress"] for event in progress_events] == [10.0, 55.0]
 
 
 def test_repository_list_filters_by_status_category_and_score(tmp_path):

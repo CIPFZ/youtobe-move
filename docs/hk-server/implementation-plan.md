@@ -576,11 +576,21 @@ hk-server/tests/
 - `videos` 增加 `task_id`、`download_attempts`、`last_error_at`、`download_progress`。
 - 下载状态流转会写入 `video_events`。
 
+### V2 第三批：下载实时进度
+
+当前状态：已实施。完成内容：
+
+- `downloader.py` 接入 yt-dlp `progress_hooks`。
+- video stream 进度映射到 `0-50`。
+- audio stream 进度映射到 `50-95`。
+- metadata/thumbnail 完成后写入 `100`。
+- `videos.download_progress` 实时更新。
+- `video_events` 和 `task_events` 记录节流后的 progress 事件。
+
 下一批建议继续：
 
-1. 给 `downloader.py` 接入 yt-dlp progress hook，写入实时 `download_progress`。
-2. 将手动下载后台编排从 `api.py` 抽到 service 层。
-3. 视需要补 `video_events` 的分页和按 `task_id` 查询。
+1. 将手动下载后台编排从 `api.py` 抽到 service 层。
+2. 视需要补 `video_events` 的分页和按 `task_id` 查询。
 
 ### 第 1 批：稳定性最小闭环
 
