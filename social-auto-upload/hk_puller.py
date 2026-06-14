@@ -228,6 +228,26 @@ def release_hk_pull_lock(video_id: str, locked_by: str = "social-auto-upload") -
     return True
 
 
+def mark_hk_video_published(video_id: str, platform: str = "bilibili", publish_ref: str = "") -> bool:
+    """Notify HK server that a pulled video has been published locally."""
+    url = f"{HK_SERVER_URL.rstrip('/')}/api/videos/{video_id}/mark-published"
+    resp = _hk_session.post(
+        url,
+        headers={**_auth_headers(), "Content-Type": "application/json"},
+        data=json.dumps({"platform": platform, "publish_ref": publish_ref}),
+        timeout=30,
+    )
+    if not 200 <= resp.status_code < 300:
+        return False
+    try:
+        payload = resp.json()
+    except ValueError:
+        return True
+    if isinstance(payload, dict) and "ok" in payload:
+        return payload.get("ok") is True
+    return True
+
+
 # ── ffmpeg merge (auto-detect AV1 → GPU transcode to H.264) ──
 
 def _probe_vcodec(video_path: Path) -> str:
@@ -392,12 +412,40 @@ def _mark_failed(conn: sqlite3.Connection, video_id: str, error: str) -> None:
     conn.commit()
 
 
-def _mark_uploaded(conn: sqlite3.Connection, video_id: str, platform: str = "bilibili") -> None:
-    conn.execute(
-        "UPDATE hk_videos SET upload_status='uploaded', uploaded_at=datetime('now'), upload_platform=? WHERE video_id=?",
-        (platform, video_id),
+def _mark_uploaded(
+    conn: sqlite3.Connection,
+    video_id: str,
+    platform: str = "bilibili",
+    account: str = "",
+) -> bool:
+    cur = conn.execute(
+        """
+        UPDATE hk_videos
+        SET upload_status='uploaded', uploaded_at=datetime('now'),
+            upload_platform=?, upload_account=?
+        WHERE video_id=?
+        """,
+        (platform, account, video_id),
     )
     conn.commit()
+    return cur.rowcount > 0
+
+
+def mark_uploaded(video_id: str, platform: str = "bilibili", account: str = "") -> bool:
+    """Mark local upload success and best-effort sync the published state back to HK."""
+    conn = _get_conn()
+    try:
+        ok = _mark_uploaded(conn, video_id, platform, account)
+    finally:
+        conn.close()
+    if not ok:
+        return False
+    try:
+        if not mark_hk_video_published(video_id, platform=platform, publish_ref=account):
+            logger.warning("HK published callback failed for %s", video_id)
+    except Exception as exc:
+        logger.warning("HK published callback failed for %s: %s", video_id, exc)
+    return True
 
 
 def _mark_upload_failed(conn: sqlite3.Connection, video_id: str, error: str) -> None:
@@ -576,7 +624,7 @@ def publish_pending(
 
     Videos are published with interval_min minutes between each upload.
     """
-    summary: dict[str, Any] = {"published": 0, "failed": 0, "skipped": 0}
+    summary: dict[str, Any] = {"published": 0, "hk_published": 0, "failed": 0, "skipped": 0}
     conn = _get_conn()
     conn.row_factory = sqlite3.Row
 
@@ -643,9 +691,16 @@ def publish_pending(
                 tags=tags,
                 account=account,
             )
-            _mark_uploaded(conn, vid, "bilibili")
+            _mark_uploaded(conn, vid, "bilibili", account or "")
             summary["published"] += 1
             logger.info("Published OK: %s", vid)
+            try:
+                if mark_hk_video_published(vid, platform="bilibili", publish_ref=account or ""):
+                    summary["hk_published"] += 1
+                else:
+                    logger.warning("HK published callback failed for %s", vid)
+            except Exception as exc:
+                logger.warning("HK published callback failed for %s: %s", vid, exc)
 
             # Delete local merged video file to save disk space (keep DB record)
             try:

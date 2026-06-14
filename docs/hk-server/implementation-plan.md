@@ -433,6 +433,10 @@ V4 第一批状态：已实施。HK 端新增拉取锁生命周期：
 `POST /api/videos/<id>/mark-published`；`confirm-pulled` 会清理锁字段并标记
 `pulled`。本地拉取端已改为下载前抢锁、失败释放锁、成功确认 pulled。
 
+V4 第二批状态：已实施。本地 `social-auto-upload/hk_puller.py` 已新增
+`mark_hk_video_published()`，`mark_uploaded()` 和 `publish_pending()` 会在本地
+发布成功后尽力回写 HK `published` 状态；HK 回写失败不影响本地 uploaded 记录。
+
 ### 7.1 目标
 
 - 明确搜索只走 yt-dlp，删除 YouTube API 兼容参数。

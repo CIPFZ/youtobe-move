@@ -394,6 +394,9 @@ downloaded -> expired
 和 `publish_ref`。本地 `social-auto-upload/hk_puller.py` 已在下载前抢锁，
 失败时释放锁，成功后确认 pulled。
 
+第二批已实施。本地端 `mark_uploaded()` 和自动发布流程已在本地上传成功后
+调用 HK `mark-published`，远端回写失败只记录 warning，不回滚本地 uploaded 状态。
+
 ### 5.4 API 设计
 
 ```text
