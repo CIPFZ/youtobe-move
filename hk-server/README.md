@@ -129,6 +129,9 @@ JSON API 错误响应统一为：
 | DISCOVERY_PROVIDER | ytdlp | 搜索 provider；当前可用 `ytdlp`，`youtube_api` 为预留入口 |
 | DISCOVERY_TOPIC_TYPES | pets,beauty,funny | 分类 |
 | DISCOVERY_TOP_N | 5 | 每日选取数 |
+| DISCOVERY_CHANNEL_ALLOWLIST | (空) | 频道白名单，逗号分隔，空值不限制 |
+| DISCOVERY_CHANNEL_BLOCKLIST | (空) | 频道黑名单，逗号分隔 |
+| DISCOVERY_TITLE_BLOCKLIST | (空) | 标题关键词黑名单，逗号分隔 |
 | DISCOVERY_INTERVAL_MINUTES | 1440 | 发现周期 |
 | DISCOVERY_DB_PATH | runtime/discovery/discovery.db | SQLite 路径 |
 | DISK_MAX_STORAGE_GB | 50 | 存储上限 |

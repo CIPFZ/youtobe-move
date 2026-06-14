@@ -73,6 +73,64 @@ def test_ytdlp_provider_maps_and_filters_entries(monkeypatch):
     assert candidates[0].category == "pets"
     assert candidates[0].published_at.startswith("2024-06-01")
     assert json.loads(candidates[0].raw_json)["title"] == "Good cat"
+    score_json = json.loads(candidates[0].score_json)
+    assert score_json["score_total"] == candidates[0].score
+    assert "score_views" in score_json
+
+
+def test_ytdlp_provider_applies_quality_blocklists(monkeypatch):
+    class FakeYoutubeDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, query, download=False):
+            return {
+                "entries": [
+                    {
+                        "id": "blockedtitl",
+                        "title": "Spam trailer",
+                        "channel": "Trusted Channel",
+                        "duration": 120,
+                        "view_count": 20000,
+                    },
+                    {
+                        "id": "blockedchan",
+                        "title": "Good video",
+                        "channel": "Blocked Channel",
+                        "duration": 120,
+                        "view_count": 20000,
+                    },
+                    {
+                        "id": "allowedvid1",
+                        "title": "Good video",
+                        "channel": "Trusted Channel",
+                        "duration": 120,
+                        "view_count": 20000,
+                    },
+                ]
+            }
+
+    monkeypatch.setattr("app.discovery.providers.ytdlp_search.yt_dlp.YoutubeDL", FakeYoutubeDL)
+    monkeypatch.setattr("app.discovery.providers.ytdlp_search.time.sleep", lambda seconds: None)
+    monkeypatch.setattr("app.discovery.providers.ytdlp_search.settings.discovery_title_blocklist", "trailer")
+    monkeypatch.setattr("app.discovery.providers.ytdlp_search.settings.discovery_channel_blocklist", "blocked")
+    monkeypatch.setattr("app.discovery.providers.ytdlp_search.settings.discovery_channel_allowlist", "trusted")
+
+    candidates = YtdlpSearchProvider().search(
+        keywords=[SearchKeyword(keyword="video", category="funny")],
+        max_results_per_keyword=3,
+        min_views=100,
+        min_duration_sec=60,
+        max_duration_sec=1800,
+    )
+
+    assert [item.video_id for item in candidates] == ["allowedvid1"]
 
 
 def test_discovery_preview_uses_configured_provider(monkeypatch):
@@ -123,4 +181,3 @@ def test_discovery_preview_uses_configured_provider(monkeypatch):
     assert preview["selected_count"] == 1
     assert preview["items"][0]["video_id"] == "abc123def46"
     assert [item["video_id"] for item in preview["raw_items"]] == ["abc123def45", "abc123def46"]
-

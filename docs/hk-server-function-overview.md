@@ -416,6 +416,9 @@ downloaded -> expired
 | `DISCOVERY_MIN_VIEWS` | `10000` | 最低播放量 |
 | `DISCOVERY_MIN_DURATION_SEC` | `60` | 最短时长 |
 | `DISCOVERY_MAX_DURATION_SEC` | `1800` | 最长时长 |
+| `DISCOVERY_CHANNEL_ALLOWLIST` | 空 | 频道白名单，逗号分隔，空值不限制 |
+| `DISCOVERY_CHANNEL_BLOCKLIST` | 空 | 频道黑名单，逗号分隔 |
+| `DISCOVERY_TITLE_BLOCKLIST` | 空 | 标题关键词黑名单，逗号分隔 |
 | `DISCOVERY_DOWNLOAD_MIN_SCORE` | `5.0` | 自动下载最低分 |
 | `DISCOVERY_INTERVAL_MINUTES` | `1440` | 定时发现间隔 |
 

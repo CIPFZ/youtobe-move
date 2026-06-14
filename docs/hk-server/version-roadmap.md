@@ -261,6 +261,12 @@ V3 不一定默认启用 YouTube API，但代码结构要允许切换。
 provider，当前会返回“不支持”的明确错误。`POST /api/discovery/preview`
 已可只执行搜索和评分，不写入 DB、不触发下载。
 
+第二批已实施。候选模型和 DB 已增加 `score_json`，保存
+`score_total`、`score_views`、`score_freshness`、`score_duration`、
+`score_channel`、`score_keyword` 以及 penalty 字段；`ytdlp` provider
+会按 `DISCOVERY_TITLE_BLOCKLIST`、`DISCOVERY_CHANNEL_BLOCKLIST` 和
+`DISCOVERY_CHANNEL_ALLOWLIST` 过滤候选。
+
 ### 4.3 搜索策略
 
 新增策略配置：

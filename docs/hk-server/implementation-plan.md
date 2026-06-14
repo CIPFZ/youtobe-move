@@ -424,6 +424,10 @@ V3 第一批状态：已实施。搜索实现已拆到 `app/discovery/providers/
 unsupported 的预留入口。新增 `POST /api/discovery/preview`，用于只搜索和评分，
 不会写入 DB 或下载文件。
 
+V3 第二批状态：已实施。`VideoCandidate` 和 `videos` 表新增 `score_json`，
+provider 会输出并持久化评分明细；基础质量规则已支持标题黑名单、频道黑名单、
+频道白名单配置。
+
 ### 7.1 目标
 
 - 明确搜索只走 yt-dlp，删除 YouTube API 兼容参数。

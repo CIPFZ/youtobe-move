@@ -24,6 +24,7 @@ def test_repository_schema_and_status_flow(tmp_path):
     assert "download_progress" in columns
     assert "download_attempts" in columns
     assert "last_error_at" in columns
+    assert "score_json" in columns
 
     item = VideoCandidate(
         video_id="abc123def45",
@@ -37,6 +38,7 @@ def test_repository_schema_and_status_flow(tmp_path):
         category="pets",
         score=7.5,
         raw_json="{}",
+        score_json='{"score_total": 7.5}',
     )
     assert repo.upsert_candidates(db_path, [item]) == 1
     assert repo.count_videos(db_path, download_status="pending") == 1
@@ -57,6 +59,7 @@ def test_repository_schema_and_status_flow(tmp_path):
     assert downloaded["task_id"] == 42
     assert downloaded["download_progress"] == 100
     assert downloaded["download_attempts"] == 1
+    assert downloaded["score_json"] == '{"score_total": 7.5}'
 
     repo.mark_pulled(db_path, "abc123def45")
     pulled = repo.get_video_by_id(db_path, "abc123def45")

@@ -16,3 +16,4 @@ class VideoCandidate:
     category: str
     score: float
     raw_json: str
+    score_json: str = '{}'

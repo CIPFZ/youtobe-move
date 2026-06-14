@@ -112,6 +112,9 @@ def _normalise_cache_item(item: dict | VideoCandidate) -> dict:
     raw_json = data.get("raw_json")
     if not isinstance(raw_json, str):
         data["raw_json"] = json.dumps(raw_json or {}, ensure_ascii=False, default=str)
+    score_json = data.get("score_json")
+    if not isinstance(score_json, str):
+        data["score_json"] = json.dumps(score_json or {}, ensure_ascii=False, default=str)
     return data
 
 

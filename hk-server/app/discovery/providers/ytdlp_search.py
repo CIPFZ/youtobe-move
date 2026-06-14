@@ -9,7 +9,7 @@ import yt_dlp
 
 from app.discovery.models import VideoCandidate
 from app.discovery.providers.base import SearchKeyword
-from app.discovery.scoring import compute_hot_score, should_keep_candidate
+from app.discovery.scoring import compute_score_details, should_keep_candidate
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -79,6 +79,8 @@ class YtdlpSearchProvider:
 
                     view_count = int(item.get("view_count") or 0)
                     duration_sec = int(item.get("duration") or 0)
+                    title = str(item.get("title") or "")
+                    channel_title = str(item.get("channel") or item.get("uploader") or "")
 
                     if not should_keep_candidate(
                         view_count=view_count,
@@ -86,26 +88,39 @@ class YtdlpSearchProvider:
                         min_views=min_views,
                         min_duration_sec=min_duration_sec,
                         max_duration_sec=max_duration_sec,
+                        title=title,
+                        channel_title=channel_title,
+                        title_blocklist=settings.discovery_title_blocklist,
+                        channel_allowlist=settings.discovery_channel_allowlist,
+                        channel_blocklist=settings.discovery_channel_blocklist,
                     ):
                         filtered += 1
                         continue
 
                     published_at = _parse_upload_date(item.get("upload_date"))
-                    score = compute_hot_score(view_count, published_at)
+                    score_details = compute_score_details(
+                        view_count=view_count,
+                        published_at=published_at,
+                        duration_sec=duration_sec,
+                        title=title,
+                        keyword=kw,
+                        channel_title=channel_title,
+                    )
 
                     out.append(
                         VideoCandidate(
                             video_id=vid,
                             url=f"https://www.youtube.com/watch?v={vid}",
-                            title=str(item.get("title") or ""),
-                            channel_title=str(item.get("channel") or item.get("uploader") or ""),
+                            title=title,
+                            channel_title=channel_title,
                             published_at=published_at,
                             duration_sec=duration_sec,
                             view_count=view_count,
                             keyword=kw,
                             category=item_kw.category,
-                            score=score,
+                            score=score_details["score_total"],
                             raw_json=json.dumps(item, ensure_ascii=False, default=str),
+                            score_json=json.dumps(score_details, ensure_ascii=False, default=str),
                         )
                     )
                     kept += 1
@@ -122,4 +137,3 @@ class YtdlpSearchProvider:
 
         logger.info("Discovery (yt-dlp) completed. candidates=%d", len(out))
         return out
-

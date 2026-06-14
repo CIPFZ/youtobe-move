@@ -39,6 +39,7 @@ def init_db(db_path: Path) -> None:
                 keyword TEXT NOT NULL DEFAULT '',
                 category TEXT NOT NULL DEFAULT '',
                 score REAL NOT NULL DEFAULT 0,
+                score_json TEXT NOT NULL DEFAULT '{}',
                 status TEXT NOT NULL DEFAULT 'pending',
                 file_dir TEXT NOT NULL DEFAULT '',
                 file_size INTEGER NOT NULL DEFAULT 0,
@@ -61,6 +62,7 @@ def init_db(db_path: Path) -> None:
         _add_column_if_missing(conn, 'videos', 'download_progress', 'REAL NOT NULL DEFAULT 0')
         _add_column_if_missing(conn, 'videos', 'download_attempts', 'INTEGER NOT NULL DEFAULT 0')
         _add_column_if_missing(conn, 'videos', 'last_error_at', "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, 'videos', 'score_json', "TEXT NOT NULL DEFAULT '{}'")
         conn.execute('CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_videos_category ON videos(category)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_videos_score ON videos(score DESC)')
@@ -176,8 +178,8 @@ def upsert_candidates(db_path: Path, items: list[VideoCandidate]) -> int:
             """
             INSERT INTO videos (
                 video_id, url, title, channel_title, published_at, duration_sec,
-                view_count, keyword, category, score, status, discovered_at, raw_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                view_count, keyword, category, score, score_json, status, discovered_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
             ON CONFLICT(video_id) DO UPDATE SET
                 url=excluded.url,
                 title=excluded.title,
@@ -188,6 +190,7 @@ def upsert_candidates(db_path: Path, items: list[VideoCandidate]) -> int:
                 keyword=excluded.keyword,
                 category=excluded.category,
                 score=excluded.score,
+                score_json=excluded.score_json,
                 discovered_at=excluded.discovered_at,
                 raw_json=excluded.raw_json
             """,
@@ -203,6 +206,7 @@ def upsert_candidates(db_path: Path, items: list[VideoCandidate]) -> int:
                     x.keyword,
                     x.category or '',
                     x.score,
+                    x.score_json,
                     now,
                     x.raw_json,
                 )
@@ -388,6 +392,7 @@ def _video_select_sql() -> str:
     return """
     SELECT video_id, url, title, channel_title, published_at, duration_sec,
            view_count, keyword, category, score, status, status AS download_status,
+           score_json,
            file_dir, file_dir AS file_path, file_size, thumbnail_path, meta_path,
            task_id, download_progress, download_attempts, last_error_at,
            downloaded_at, pulled_at, expired_at, error, error AS download_error,
