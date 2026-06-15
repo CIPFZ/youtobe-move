@@ -24,6 +24,7 @@ hk-server (常驻进程 :8503)
 ├── GET  /api/metrics       — Prometheus 文本指标
 ├── GET  /api/admin/disk    — 磁盘和下载存储状态
 ├── POST /api/admin/cleanup/run — 手动执行磁盘清理
+├── POST /api/admin/tasks/<id>/force-fail — 强制标记任务失败
 ├── POST /api/discovery/preview — 只搜索评分，不保存不下载
 ├── POST /api/discovery/run — 手动触发发现下载
 └── POST /api/downloads     — 手动提交 URL 下载
@@ -119,6 +120,7 @@ JSON API 错误响应统一为：
 | GET | `/api/metrics` | Prometheus 文本指标 |
 | GET | `/api/admin/disk` | 磁盘和下载存储状态 |
 | POST | `/api/admin/cleanup/run` | 手动执行磁盘清理 |
+| POST | `/api/admin/tasks/<id>/force-fail` | 强制标记任务失败 |
 | POST | `/api/discovery/preview` | 只搜索评分，不保存不下载 |
 | POST | `/api/discovery/run` | 手动触发发现下载，返回 `task_id` |
 | POST | `/api/downloads` | 手动提交 URL 下载，返回 `task_id` |

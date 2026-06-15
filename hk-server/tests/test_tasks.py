@@ -64,3 +64,20 @@ def test_request_cancel_marks_active_task_and_finish_becomes_cancelled(tmp_path)
     finished = tasks.get_task(db_path, task["task_id"])
     assert finished["status"] == "cancelled"
     assert tasks.get_running_task(db_path) is None
+
+
+def test_force_fail_task_marks_task_failed_and_records_event(tmp_path):
+    db_path = tmp_path / "tasks.db"
+    task = tasks.start_task(db_path, "discovery_download")
+    assert task is not None
+
+    failed = tasks.force_fail_task(db_path, task["task_id"], "stuck")
+
+    assert failed["status"] == "failed"
+    assert failed["error"] == "stuck"
+    assert failed["finished_at"]
+    assert tasks.get_running_task(db_path) is None
+    events = tasks.list_task_events(db_path, task["task_id"])
+    assert [event["event_type"] for event in events] == ["started", "force_failed"]
+    assert events[-1]["data"] == {"forced": True}
+    assert tasks.force_fail_task(db_path, 999, "missing") is None

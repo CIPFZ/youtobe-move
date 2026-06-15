@@ -1,5 +1,6 @@
 import json
 import threading
+import urllib.error
 import urllib.request
 
 from app import api, tasks
@@ -95,6 +96,47 @@ def test_task_cancel_retry_and_video_events_http(monkeypatch, tmp_path):
             task_events_body = json.loads(resp.read().decode("utf-8"))
         assert task_events_body["ok"] is True
         assert [event["event_type"] for event in task_events_body["data"]["items"]] == ["downloading", "failed"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_admin_force_fail_task_http(monkeypatch, tmp_path):
+    db_path = tmp_path / "tasks.db"
+    monkeypatch.setattr(api.settings, "discovery_db_path", db_path)
+    monkeypatch.setattr(api.settings, "download_media_dir", tmp_path / "downloads")
+    monkeypatch.setattr(api.settings, "api_token", "")
+
+    server = api.run_api_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+
+    try:
+        task = tasks.start_task(db_path, "discovery_download")
+        assert task is not None
+        req = urllib.request.Request(
+            base + f"/api/admin/tasks/{task['task_id']}/force-fail",
+            data=json.dumps({"error": "stuck"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        assert body["ok"] is True
+        assert body["data"]["status"] == "failed"
+        assert body["data"]["error"] == "stuck"
+        assert [event["event_type"] for event in body["data"]["events"]] == ["started", "force_failed"]
+
+        req = urllib.request.Request(base + "/api/admin/tasks/999/force-fail", data=b"{}", method="POST")
+        try:
+            urllib.request.urlopen(req, timeout=5)
+        except urllib.error.HTTPError as resp:
+            missing = json.loads(resp.read().decode("utf-8"))
+            assert resp.status == 404
+            assert missing["error"]["code"] == "not_found"
+        else:
+            raise AssertionError("Expected HTTP 404")
     finally:
         server.shutdown()
         server.server_close()

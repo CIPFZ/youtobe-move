@@ -33,6 +33,7 @@ from app.tasks import (
     init_task_db,
     list_task_events,
     list_tasks,
+    force_fail_task,
     recover_interrupted_tasks,
     request_cancel,
 )
@@ -318,6 +319,18 @@ class _ApiHandler(BaseHTTPRequestHandler):
         if path == '/api/admin/cleanup/run':
             self._handle_admin_cleanup_run()
             return
+
+        if path.startswith('/api/admin/tasks/'):
+            parts = [p for p in path.split('/') if p]
+            if len(parts) >= 5 and parts[0] == 'api' and parts[1] == 'admin' and parts[2] == 'tasks':
+                try:
+                    task_id = int(parts[3])
+                except ValueError:
+                    _error_response(self, 'Invalid task_id', status=400)
+                    return
+                if parts[4] == 'force-fail':
+                    self._handle_force_fail_task(task_id)
+                    return
 
         if path.startswith('/api/tasks/'):
             task_id = _parse_task_id(path)
@@ -689,6 +702,20 @@ class _ApiHandler(BaseHTTPRequestHandler):
             self._start_manual_download(url=url, category=category, vid=vid, input_data=input_data)
             return
         _error_response(self, f'Task type is not retryable: {task_name}', status=400)
+
+    def _handle_force_fail_task(self, task_id: int) -> None:
+        body, error = self._read_json_body()
+        if error:
+            _error_response(self, error, status=400)
+            return
+        message = str((body or {}).get('error') or 'Task force-failed by admin').strip()
+        db_path = settings.discovery_db_path.resolve()
+        task = force_fail_task(db_path, task_id, message)
+        if task is None:
+            _error_response(self, 'Task not found', status=404)
+            return
+        task['events'] = list_task_events(db_path, task_id)
+        _success_response(self, task)
 
     def _handle_stats(self) -> None:
         db_path = settings.discovery_db_path.resolve()

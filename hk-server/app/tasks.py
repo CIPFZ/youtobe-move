@@ -252,6 +252,34 @@ def request_cancel(db_path: Path, task_id: int) -> dict[str, Any] | None:
         return task
 
 
+def force_fail_task(db_path: Path, task_id: int, error: str = "Task force-failed by admin") -> dict[str, Any] | None:
+    init_task_db(db_path)
+    now = _now()
+    message = str(error or "Task force-failed by admin")[:4000]
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+        if row is None:
+            return None
+        conn.execute(
+            """
+            UPDATE tasks
+            SET status='failed', error=?, finished_at=?
+            WHERE task_id=?
+            """,
+            (message, now, task_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO task_events (task_id, event_type, message, data_json, created_at)
+            VALUES (?, 'force_failed', ?, ?, ?)
+            """,
+            (task_id, message, _json_dumps({"forced": True}), now),
+        )
+        row = conn.execute("SELECT * FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+    return _task_from_row(row)
+
+
 def is_cancel_requested(db_path: Path, task_id: int) -> bool:
     init_task_db(db_path)
     with sqlite3.connect(db_path) as conn:
