@@ -441,6 +441,9 @@ V5 第一批状态：已实施。HK API 已新增运维接口：
 `GET /api/metrics`、`GET /api/admin/disk`、`POST /api/admin/cleanup/run`；
 metrics 暴露视频状态、任务状态、下载存储字节数、磁盘剩余空间和是否超限。
 
+V5 第二批状态：已实施。新增 `DISK_MIN_FREE_GB` 下载保护阈值；自动下载和
+手动下载在调用 yt-dlp 前会先清理旧文件并检查剩余空间，低于阈值时停止继续下载。
+
 ### 7.1 目标
 
 - 明确搜索只走 yt-dlp，删除 YouTube API 兼容参数。

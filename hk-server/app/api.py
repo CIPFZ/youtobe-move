@@ -715,6 +715,12 @@ class _ApiHandler(BaseHTTPRequestHandler):
             'configured_max_storage_gb': settings.disk_max_storage_gb,
             'configured_max_storage_bytes': max_bytes,
             'storage_over_limit': bool(max_bytes > 0 and downloaded_bytes > max_bytes),
+            'min_free_gb': settings.disk_min_free_gb,
+            'min_free_bytes': int(max(0.0, settings.disk_min_free_gb) * 1024 ** 3),
+            'disk_low': bool(
+                settings.disk_min_free_gb > 0
+                and usage.free < int(settings.disk_min_free_gb * 1024 ** 3)
+            ),
             'retention_days': settings.disk_max_retention_days,
         }
 
@@ -773,6 +779,9 @@ class _ApiHandler(BaseHTTPRequestHandler):
                 '# HELP hk_server_storage_over_limit Whether tracked downloads exceed the configured storage limit.',
                 '# TYPE hk_server_storage_over_limit gauge',
                 self._metric_line('hk_server_storage_over_limit', 1 if disk['storage_over_limit'] else 0),
+                '# HELP hk_server_disk_low Whether free disk space is below the configured minimum.',
+                '# TYPE hk_server_disk_low gauge',
+                self._metric_line('hk_server_disk_low', 1 if disk['disk_low'] else 0),
             ])
             _text_response(self, '\n'.join(lines) + '\n', content_type='text/plain; version=0.0.4; charset=utf-8')
         except Exception as exc:

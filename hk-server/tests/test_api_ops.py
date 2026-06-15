@@ -16,6 +16,7 @@ def _start_server(monkeypatch, tmp_path):
     monkeypatch.setattr(api.settings, "api_token", "")
     monkeypatch.setattr(api.settings, "disk_max_storage_gb", 50.0)
     monkeypatch.setattr(api.settings, "disk_max_retention_days", 30)
+    monkeypatch.setattr(api.settings, "disk_min_free_gb", 0.0)
     repo.init_db(db_path)
     server = api.run_api_server("127.0.0.1", 0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -44,6 +45,7 @@ def test_metrics_and_admin_disk_http(monkeypatch, tmp_path):
         assert "text/plain" in resp.headers["Content-Type"]
         assert 'hk_server_videos_total{status="failed"} 1' in metrics
         assert "hk_server_disk_free_bytes" in metrics
+        assert "hk_server_disk_low 0" in metrics
         assert "hk_server_task_running 0" in metrics
 
         with urllib.request.urlopen(base + "/api/admin/disk", timeout=5) as resp:
@@ -51,6 +53,7 @@ def test_metrics_and_admin_disk_http(monkeypatch, tmp_path):
         assert disk["ok"] is True
         assert disk["data"]["disk_free_bytes"] > 0
         assert disk["data"]["downloaded_bytes"] == 0
+        assert disk["data"]["disk_low"] is False
     finally:
         server.shutdown()
         server.server_close()
@@ -76,4 +79,3 @@ def test_admin_cleanup_run_http(monkeypatch, tmp_path):
     finally:
         server.shutdown()
         server.server_close()
-

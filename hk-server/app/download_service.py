@@ -36,6 +36,11 @@ from app.task_state import (
 
 logger = logging.getLogger(__name__)
 
+
+class DiskSpaceError(RuntimeError):
+    pass
+
+
 def _dir_size(path: Path) -> int:
     if not path.exists():
         return 0
@@ -149,6 +154,30 @@ def _candidates_to_dicts(candidates: list[VideoCandidate]) -> list[dict]:
     return [asdict(c) for c in candidates]
 
 
+def ensure_download_storage_ready(db_path: Path, media_root: Path) -> dict[str, Any]:
+    media_root.mkdir(parents=True, exist_ok=True)
+    expired = cleanup_if_needed(
+        db_path=db_path,
+        media_dir=media_root,
+        max_gb=settings.disk_max_storage_gb,
+        max_days=settings.disk_max_retention_days,
+    )
+    usage = shutil.disk_usage(media_root)
+    min_free_bytes = int(max(0.0, settings.disk_min_free_gb) * 1024 ** 3)
+    report = {
+        "expired": expired,
+        "disk_free_bytes": usage.free,
+        "disk_free_gb": round(usage.free / (1024 ** 3), 4),
+        "disk_min_free_gb": settings.disk_min_free_gb,
+        "disk_min_free_bytes": min_free_bytes,
+    }
+    if min_free_bytes > 0 and usage.free < min_free_bytes:
+        raise DiskSpaceError(
+            f"Insufficient disk space: free={report['disk_free_gb']}GB min={settings.disk_min_free_gb}GB"
+        )
+    return report
+
+
 def make_progress_callback(db_path, video_id: str, task_id: int | None):
     last_progress = -1.0
 
@@ -204,6 +233,10 @@ def run_manual_download(*, url: str, category: str, video_id: str) -> dict[str, 
         )
 
         ensure_video_row(db_path, video_id, url, category)
+        storage = ensure_download_storage_ready(db_path, media_root)
+        if storage.get("expired"):
+            summary["expired"] = storage["expired"]
+            record_task_event("cleanup", "Cleanup before manual download", storage)
         mark_downloading(db_path, video_id, task_id=task_id)
 
         result = download_media(
@@ -267,6 +300,7 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "discovered": 0, "persisted": 0, "downloaded": 0,
         "failed": 0, "expired": 0, "cached": False, "cancelled": False,
+        "skipped_low_disk": 0,
     }
 
     try:
@@ -336,6 +370,22 @@ def run_discovery_and_download(*, task_started: bool = False) -> dict[str, Any]:
             category = p.get("category", "uncategorised") or "uncategorised"
             out_dir = media_root / category / vid
             out_dir.mkdir(parents=True, exist_ok=True)
+
+            try:
+                storage = ensure_download_storage_ready(db_path, media_root)
+                if storage.get("expired"):
+                    summary["expired"] += int(storage["expired"])
+                    record_task_event("cleanup", "Cleanup before download", storage)
+            except DiskSpaceError as exc:
+                skipped = len(pending) - i
+                summary["skipped_low_disk"] = skipped
+                record_task_event(
+                    "disk_low",
+                    "Download queue stopped because disk free space is below threshold",
+                    {"video_id": vid, "skipped": skipped, "error": str(exc)},
+                )
+                logger.warning("Download queue stopped: %s", exc)
+                break
 
             logger.info("Downloading %s category=%s -> %s", vid, category, out_dir)
             record_task_event("download_started", f"Downloading {vid}", {"video_id": vid, "category": category})

@@ -443,6 +443,7 @@ downloaded -> expired
 | `DISCOVERY_DB_PATH` | `runtime/discovery/discovery.db` | SQLite 路径 |
 | `DISK_MAX_STORAGE_GB` | `50.0` | downloaded 总大小上限 |
 | `DISK_MAX_RETENTION_DAYS` | `7` | 最大保留天数 |
+| `DISK_MIN_FREE_GB` | `2.0` | 下载前要求的最小磁盘剩余空间 |
 | `API_TOKEN` | 空 | Bearer token，空则无认证 |
 | `API_HOST` | `0.0.0.0` | 监听地址 |
 | `API_PORT` | `8503` | 监听端口 |

@@ -148,6 +148,7 @@ JSON API 错误响应统一为：
 | DISCOVERY_DB_PATH | runtime/discovery/discovery.db | SQLite 路径 |
 | DISK_MAX_STORAGE_GB | 50 | 存储上限 |
 | DISK_MAX_RETENTION_DAYS | 7 | 保留天数 |
+| DISK_MIN_FREE_GB | 2 | 下载前要求的最小磁盘剩余空间 |
 | PULL_LOCK_TTL_MINUTES | 120 | 本地端拉取锁有效期 |
 | DOWNLOAD_INTERVAL_SEC | 180 | 下载间隔 |
 | API_PORT | 8503 | 端口 |

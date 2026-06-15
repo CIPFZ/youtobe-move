@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     download_media_dir: Path = Field(default=Path('runtime/downloads'))
     disk_max_storage_gb: float = Field(default=50.0)
     disk_max_retention_days: int = Field(default=7)
+    disk_min_free_gb: float = Field(default=2.0)
     pull_lock_ttl_minutes: int = Field(default=120)
 
     # seconds between each video download to avoid triggering rate limits

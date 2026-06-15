@@ -297,13 +297,13 @@ class BaiJiaHaoVideo(object):
                """)
 
         # 定位新闻列表容器（转义特殊CSS字符）
-        container_selector = '.overflow-auto.flex-grow.h-0.saas-scrollbar.mt\-\[-4px\].pl\-\[24px\].pr\-\[10px\].pb\-\[18px\]'
-        news_items = await page.locator(container_selector).locator('div.py\-\[6px\].group.cursor-pointer').all()
+        container_selector = r'.overflow-auto.flex-grow.h-0.saas-scrollbar.mt\-\[-4px\].pl\-\[24px\].pr\-\[10px\].pb\-\[18px\]'
+        news_items = await page.locator(container_selector).locator(r'div.py\-\[6px\].group.cursor-pointer').all()
 
         for item in news_items:
             try:
                 # 获取新闻标题
-                title_elem = item.locator('div.flex.text-gray-darker.items-center.relative.pr\-\[56px\] > span')
+                title_elem = item.locator(r'div.flex.text-gray-darker.items-center.relative.pr\-\[56px\] > span')
                 title = await title_elem.text_content()
                 if not title:
                     continue
