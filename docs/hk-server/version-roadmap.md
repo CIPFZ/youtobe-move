@@ -445,6 +445,10 @@ V5 解决长期运行和规模化问题。重点是部署、监控、限流、�
 - 下载失败率统计。
 - YouTube 限流检测。
 
+当前状态：第一批已实施。HK API 已新增 `GET /api/metrics`、
+`GET /api/admin/disk` 和 `POST /api/admin/cleanup/run`，可查看视频/任务/磁盘
+指标、下载目录磁盘状态，并手动触发一次清理。
+
 ### 6.3 队列和 worker
 
 如果下载量变大，V5 可以把任务执行从 API 进程拆出来：

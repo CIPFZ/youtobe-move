@@ -304,6 +304,9 @@ Authorization: Bearer <API_TOKEN>
 | `POST` | `/api/videos/<id>/mark-published` | 本地发布成功后回写 `published` |
 | `DELETE` | `/api/videos/<id>/files` | 管理员强制删除磁盘目录并标记 `expired` |
 | `GET` | `/api/stats` | 查询统计 |
+| `GET` | `/api/metrics` | Prometheus 文本指标 |
+| `GET` | `/api/admin/disk` | 磁盘和下载存储状态 |
+| `POST` | `/api/admin/cleanup/run` | 手动执行磁盘清理 |
 | `POST` | `/api/discovery/preview` | 只搜索和评分，不写入 DB、不下载 |
 | `POST` | `/api/discovery/run` | 后台触发一次发现 + 下载 |
 | `POST` | `/api/downloads` | 后台下载指定 URL |

@@ -437,6 +437,10 @@ V4 第二批状态：已实施。本地 `social-auto-upload/hk_puller.py` 已新
 `mark_hk_video_published()`，`mark_uploaded()` 和 `publish_pending()` 会在本地
 发布成功后尽力回写 HK `published` 状态；HK 回写失败不影响本地 uploaded 记录。
 
+V5 第一批状态：已实施。HK API 已新增运维接口：
+`GET /api/metrics`、`GET /api/admin/disk`、`POST /api/admin/cleanup/run`；
+metrics 暴露视频状态、任务状态、下载存储字节数、磁盘剩余空间和是否超限。
+
 ### 7.1 目标
 
 - 明确搜索只走 yt-dlp，删除 YouTube API 兼容参数。

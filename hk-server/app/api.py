@@ -14,6 +14,7 @@ from app.discovery.repository import (
     acquire_pull_lock,
     count_video_events,
     count_videos,
+    get_total_storage_bytes,
     get_storage_stats,
     get_video_by_id,
     init_db,
@@ -23,6 +24,7 @@ from app.discovery.repository import (
     mark_pulled,
     release_pull_lock,
 )
+from app.disk_cleaner import cleanup_if_needed
 from app.settings import settings
 from app.task_state import finish_task, get_task_state, try_start_task
 from app.tasks import (
@@ -44,6 +46,21 @@ def _json_response(handler: BaseHTTPRequestHandler, data: object, status: int = 
     body = json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8')
     handler.send_response(status)
     handler.send_header('Content-Type', 'application/json; charset=utf-8')
+    handler.send_header('Content-Length', str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def _text_response(
+    handler: BaseHTTPRequestHandler,
+    text: str,
+    *,
+    status: int = 200,
+    content_type: str = 'text/plain; charset=utf-8',
+) -> None:
+    body = text.encode('utf-8')
+    handler.send_response(status)
+    handler.send_header('Content-Type', content_type)
     handler.send_header('Content-Length', str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
@@ -224,6 +241,14 @@ class _ApiHandler(BaseHTTPRequestHandler):
             self._handle_list_video_events(qs)
             return
 
+        if path == '/api/metrics':
+            self._handle_metrics()
+            return
+
+        if path == '/api/admin/disk':
+            self._handle_admin_disk()
+            return
+
         # GET /api/videos/<id> — detail or file
         if path.startswith('/api/videos/'):
             video_id = _parse_video_id(path)
@@ -288,6 +313,10 @@ class _ApiHandler(BaseHTTPRequestHandler):
 
         if path == '/api/downloads':
             self._handle_post_download()
+            return
+
+        if path == '/api/admin/cleanup/run':
+            self._handle_admin_cleanup_run()
             return
 
         if path.startswith('/api/tasks/'):
@@ -665,6 +694,121 @@ class _ApiHandler(BaseHTTPRequestHandler):
         db_path = settings.discovery_db_path.resolve()
         stats = get_storage_stats(db_path)
         _success_response(self, stats)
+
+    def _disk_report(self) -> dict[str, object]:
+        db_path = settings.discovery_db_path.resolve()
+        download_dir = settings.download_media_dir.resolve()
+        download_dir.mkdir(parents=True, exist_ok=True)
+        usage = shutil.disk_usage(download_dir)
+        downloaded_bytes = get_total_storage_bytes(db_path)
+        max_bytes = int(max(0.0, settings.disk_max_storage_gb) * 1024 ** 3)
+        return {
+            'download_dir': str(download_dir),
+            'disk_total_bytes': usage.total,
+            'disk_used_bytes': usage.used,
+            'disk_free_bytes': usage.free,
+            'disk_total_gb': round(usage.total / (1024 ** 3), 2),
+            'disk_used_gb': round(usage.used / (1024 ** 3), 2),
+            'disk_free_gb': round(usage.free / (1024 ** 3), 2),
+            'downloaded_bytes': downloaded_bytes,
+            'downloaded_gb': round(downloaded_bytes / (1024 ** 3), 4),
+            'configured_max_storage_gb': settings.disk_max_storage_gb,
+            'configured_max_storage_bytes': max_bytes,
+            'storage_over_limit': bool(max_bytes > 0 and downloaded_bytes > max_bytes),
+            'retention_days': settings.disk_max_retention_days,
+        }
+
+    def _handle_admin_disk(self) -> None:
+        try:
+            _success_response(self, self._disk_report())
+        except Exception as exc:
+            logger.error('Admin disk report failed: %s', exc, exc_info=True)
+            _error_response(self, f'Disk report failed: {exc}', status=500)
+
+    def _metric_line(self, name: str, value: int | float, labels: dict[str, str] | None = None) -> str:
+        if labels:
+            def _escape_label(value: str) -> str:
+                return value.replace('\\', '\\\\').replace('"', '\\"')
+
+            label_str = ','.join(
+                f'{key}="{_escape_label(str(val))}"'
+                for key, val in sorted(labels.items())
+            )
+            return f'{name}{{{label_str}}} {value}'
+        return f'{name} {value}'
+
+    def _handle_metrics(self) -> None:
+        try:
+            db_path = settings.discovery_db_path.resolve()
+            stats = get_storage_stats(db_path)
+            disk = self._disk_report()
+            lines = [
+                '# HELP hk_server_videos_total Videos by lifecycle status.',
+                '# TYPE hk_server_videos_total gauge',
+            ]
+            for status, count in sorted(dict(stats.get('by_status') or {}).items()):
+                lines.append(self._metric_line('hk_server_videos_total', int(count), {'status': str(status)}))
+
+            lines.extend([
+                '# HELP hk_server_tasks_total Tasks by status.',
+                '# TYPE hk_server_tasks_total gauge',
+            ])
+            for status in ('running', 'cancel_requested', 'success', 'failed', 'cancelled'):
+                lines.append(self._metric_line('hk_server_tasks_total', count_tasks(db_path, status=status), {'status': status}))
+
+            current = get_task_state()
+            lines.extend([
+                '# HELP hk_server_task_running Whether a background task is currently active.',
+                '# TYPE hk_server_task_running gauge',
+                self._metric_line('hk_server_task_running', 1 if current.get('running') else 0),
+                '# HELP hk_server_storage_downloaded_bytes Bytes tracked for downloaded videos.',
+                '# TYPE hk_server_storage_downloaded_bytes gauge',
+                self._metric_line('hk_server_storage_downloaded_bytes', int(disk['downloaded_bytes'])),
+                '# HELP hk_server_disk_free_bytes Free bytes on the download filesystem.',
+                '# TYPE hk_server_disk_free_bytes gauge',
+                self._metric_line('hk_server_disk_free_bytes', int(disk['disk_free_bytes'])),
+                '# HELP hk_server_disk_total_bytes Total bytes on the download filesystem.',
+                '# TYPE hk_server_disk_total_bytes gauge',
+                self._metric_line('hk_server_disk_total_bytes', int(disk['disk_total_bytes'])),
+                '# HELP hk_server_storage_over_limit Whether tracked downloads exceed the configured storage limit.',
+                '# TYPE hk_server_storage_over_limit gauge',
+                self._metric_line('hk_server_storage_over_limit', 1 if disk['storage_over_limit'] else 0),
+            ])
+            _text_response(self, '\n'.join(lines) + '\n', content_type='text/plain; version=0.0.4; charset=utf-8')
+        except Exception as exc:
+            logger.error('Metrics failed: %s', exc, exc_info=True)
+            _error_response(self, f'Metrics failed: {exc}', status=500)
+
+    def _handle_admin_cleanup_run(self) -> None:
+        body, error = self._read_json_body()
+        if error:
+            _error_response(self, error, status=400)
+            return
+        try:
+            max_gb = float((body or {}).get('max_gb', settings.disk_max_storage_gb))
+            max_days = int((body or {}).get('max_days', settings.disk_max_retention_days))
+        except (TypeError, ValueError):
+            _error_response(self, 'Invalid max_gb or max_days', status=400)
+            return
+
+        db_path = settings.discovery_db_path.resolve()
+        media_root = settings.download_media_dir.resolve()
+        try:
+            expired = cleanup_if_needed(
+                db_path=db_path,
+                media_dir=media_root,
+                max_gb=max_gb,
+                max_days=max_days,
+            )
+            _success_response(self, {
+                'expired': expired,
+                'max_gb': max_gb,
+                'max_days': max_days,
+                'disk': self._disk_report(),
+            })
+        except Exception as exc:
+            logger.error('Manual cleanup failed: %s', exc, exc_info=True)
+            _error_response(self, f'Cleanup failed: {exc}', status=500)
 
     def _handle_trigger_discovery(self) -> None:
         """Start discovery+download in a background thread, return immediately."""

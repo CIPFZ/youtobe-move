@@ -21,6 +21,9 @@ hk-server (常驻进程 :8503)
 ├── POST /api/videos/<id>/confirm-pulled — 确认拉取，服务器删除
 ├── POST /api/videos/<id>/mark-published — 本地端发布成功回写
 ├── GET  /api/stats         — 存储统计
+├── GET  /api/metrics       — Prometheus 文本指标
+├── GET  /api/admin/disk    — 磁盘和下载存储状态
+├── POST /api/admin/cleanup/run — 手动执行磁盘清理
 ├── POST /api/discovery/preview — 只搜索评分，不保存不下载
 ├── POST /api/discovery/run — 手动触发发现下载
 └── POST /api/downloads     — 手动提交 URL 下载
@@ -113,6 +116,9 @@ JSON API 错误响应统一为：
 | POST | `/api/videos/<id>/mark-published` | 本地发布成功后回写 published |
 | DELETE | `/api/videos/<id>/files` | 管理员强制删除服务器文件并标记 expired |
 | GET | `/api/stats` | 存储统计 |
+| GET | `/api/metrics` | Prometheus 文本指标 |
+| GET | `/api/admin/disk` | 磁盘和下载存储状态 |
+| POST | `/api/admin/cleanup/run` | 手动执行磁盘清理 |
 | POST | `/api/discovery/preview` | 只搜索评分，不保存不下载 |
 | POST | `/api/discovery/run` | 手动触发发现下载，返回 `task_id` |
 | POST | `/api/downloads` | 手动提交 URL 下载，返回 `task_id` |
