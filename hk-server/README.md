@@ -51,6 +51,13 @@ pip install -e .
 hk-server              # 启动常驻服务
 ```
 
+systemd 和 logrotate 模板见：
+
+```text
+deploy/hk-server.service
+deploy/hk-server.logrotate
+```
+
 ## 测试
 
 离线单元测试不访问 YouTube 网络：

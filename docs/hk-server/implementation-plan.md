@@ -447,6 +447,9 @@ V5 第二批状态：已实施。新增 `DISK_MIN_FREE_GB` 下载保护阈值；
 V5 第三批状态：已实施。新增 `POST /api/admin/tasks/<id>/force-fail`，用于
 把异常卡住或人工判定失败的任务记录强制置为 `failed`，并记录审计事件。
 
+V5 第四批状态：已实施。新增 `hk-server/deploy/hk-server.service` 和
+`hk-server/deploy/hk-server.logrotate`，部署文档不再只保留内联示例。
+
 ### 7.1 目标
 
 - 明确搜索只走 yt-dlp，删除 YouTube API 兼容参数。

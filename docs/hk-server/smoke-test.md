@@ -100,7 +100,13 @@ df -h /home/ytq/work/youtobe-move/hk-server/runtime
 runtime/logs/hk-server.log
 ```
 
-logrotate 示例：
+logrotate 模板见：
+
+```text
+hk-server/deploy/hk-server.logrotate
+```
+
+当前模板内容：
 
 ```text
 /home/ytq/work/youtobe-move/hk-server/runtime/logs/*.log {
@@ -113,24 +119,12 @@ logrotate 示例：
 }
 ```
 
-## Systemd Example
+## Systemd
 
-```ini
-[Unit]
-Description=hk-server YouTube discovery and download service
-After=network-online.target
-Wants=network-online.target
+systemd 模板见：
 
-[Service]
-Type=simple
-WorkingDirectory=/home/ytq/work/youtobe-move/hk-server
-EnvironmentFile=/home/ytq/work/youtobe-move/hk-server/.env
-ExecStart=/home/ytq/work/youtobe-move/hk-server/.venv/bin/hk-server
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
+```text
+hk-server/deploy/hk-server.service
 ```
 
 部署后：

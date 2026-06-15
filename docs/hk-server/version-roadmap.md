@@ -455,6 +455,9 @@ V5 解决长期运行和规模化问题。重点是部署、监控、限流、�
 第三批已实施。新增 `POST /api/admin/tasks/<id>/force-fail`，用于把异常卡住
 或人工判定失败的任务记录强制置为 `failed`，并写入 `force_failed` 事件。
 
+第四批已实施。仓库新增 `hk-server/deploy/hk-server.service` 和
+`hk-server/deploy/hk-server.logrotate` 模板，部署文档改为引用可维护文件。
+
 ### 6.3 队列和 worker
 
 如果下载量变大，V5 可以把任务执行从 API 进程拆出来：
