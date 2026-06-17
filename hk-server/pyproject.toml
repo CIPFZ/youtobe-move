@@ -19,7 +19,10 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["main", "config", "logger"]
+py-modules = ["main", "youtube_api_cli"]
+
+[tool.setuptools.packages.find]
+include = ["app", "app.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
