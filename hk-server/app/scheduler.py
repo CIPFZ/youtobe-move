@@ -44,23 +44,28 @@ def run_server() -> None:
     server = run_api_server()
     print(f'API server listening on http://{settings.api_host}:{settings.api_port}')
 
-    # Discovery poller
-    disc_interval_sec = max(60, int(settings.discovery_interval_minutes) * 60)
+    # Discovery poller. 0 disables scheduled discovery so deployments can run
+    # manual smoke tests without immediately starting a long yt-dlp search.
+    if int(settings.discovery_interval_minutes) > 0:
+        disc_interval_sec = max(60, int(settings.discovery_interval_minutes) * 60)
 
-    def _discovery_loop() -> None:
-        time.sleep(10)
-        while True:
-            logger.info('Timer: triggering scheduled discovery cycle')
-            try:
-                summary = run_discovery_and_download()
-                logger.info('Timer: cycle complete — %s', summary)
-            except Exception as exc:
-                logger.error('Timer: cycle failed — %s', exc, exc_info=True)
-            time.sleep(disc_interval_sec)
+        def _discovery_loop() -> None:
+            time.sleep(10)
+            while True:
+                logger.info('Timer: triggering scheduled discovery cycle')
+                try:
+                    summary = run_discovery_and_download()
+                    logger.info('Timer: cycle complete — %s', summary)
+                except Exception as exc:
+                    logger.error('Timer: cycle failed — %s', exc, exc_info=True)
+                time.sleep(disc_interval_sec)
 
-    disc_thread = threading.Thread(target=_discovery_loop, daemon=True, name='discovery-timer')
-    disc_thread.start()
-    print(f'Discovery timer started (interval={settings.discovery_interval_minutes} min)')
+        disc_thread = threading.Thread(target=_discovery_loop, daemon=True, name='discovery-timer')
+        disc_thread.start()
+        print(f'Discovery timer started (interval={settings.discovery_interval_minutes} min)')
+    else:
+        logger.info('Discovery timer disabled (DISCOVERY_INTERVAL_MINUTES=%s)', settings.discovery_interval_minutes)
+        print('Discovery timer disabled')
 
     try:
         server.serve_forever()
