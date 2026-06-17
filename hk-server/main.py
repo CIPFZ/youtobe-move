@@ -10,7 +10,7 @@ from typing import Any
 import requests
 import yt_dlp
 
-from config import load_config
+from config import Config, load_config
 from logger import setup_logger
 
 
@@ -29,16 +29,29 @@ def write_meta(info: dict[str, Any], target: Path) -> None:
     )
 
 
-def extract_info(url: str, cookie_file: str = "", proxy: str = "") -> dict[str, Any]:
-    logger.info("Extracting video metadata: url=%s proxy=%s cookie_file=%s", url, bool(proxy), bool(cookie_file))
+def build_ytdlp_options(config: Config) -> dict[str, Any]:
     opts: dict[str, Any] = {
         "noplaylist": True,
-        "skip_download": True,
+        "socket_timeout": config.socket_timeout,
+        "retries": config.retries,
+        "fragment_retries": config.fragment_retries,
     }
-    if cookie_file:
-        opts["cookiefile"] = cookie_file
-    if proxy:
-        opts["proxy"] = proxy
+    if config.cookie_file:
+        opts["cookiefile"] = config.cookie_file
+    if config.proxy:
+        opts["proxy"] = config.proxy
+    return opts
+
+
+def extract_info(url: str, config: Config) -> dict[str, Any]:
+    logger.info(
+        "Extracting video metadata: url=%s proxy=%s cookie_file=%s",
+        url,
+        bool(config.proxy),
+        bool(config.cookie_file),
+    )
+    opts = build_ytdlp_options(config)
+    opts["skip_download"] = True
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -56,20 +69,15 @@ def download_stream(
     out_dir: Path,
     output_name: str,
     format_selector: str,
-    cookie_file: str = "",
-    proxy: str = "",
+    config: Config,
 ) -> Path:
     logger.info("Downloading %s stream: format=%s output_dir=%s", output_name, format_selector, out_dir)
-    opts: dict[str, Any] = {
-        "noplaylist": True,
+    opts = build_ytdlp_options(config)
+    opts.update({
         "format": format_selector,
         "outtmpl": str(out_dir / f"{output_name}.%(ext)s"),
         "overwrites": True,
-    }
-    if cookie_file:
-        opts["cookiefile"] = cookie_file
-    if proxy:
-        opts["proxy"] = proxy
+    })
 
     before = set(out_dir.glob(f"{output_name}.*"))
     for old_file in before:
@@ -167,7 +175,7 @@ def main() -> int:
 
     try:
         logger.info("Download job started: url=%s", args.url)
-        info = extract_info(args.url, cookie_file=config.cookie_file, proxy=config.proxy)
+        info = extract_info(args.url, config)
         video_id = str(info["id"])
         out_dir = config.output_dir / video_id
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -180,16 +188,14 @@ def main() -> int:
             out_dir,
             "video",
             config.video_format,
-            cookie_file=config.cookie_file,
-            proxy=config.proxy,
+            config,
         )
         audio_path = download_stream(
             args.url,
             out_dir,
             "audio",
             config.audio_format,
-            cookie_file=config.cookie_file,
-            proxy=config.proxy,
+            config,
         )
         poster_path = download_poster(info, out_dir, proxy=config.proxy)
 
