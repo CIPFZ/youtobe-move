@@ -8,24 +8,15 @@ version = "1.0.0"
 description = "YouTube video discovery & download service for content migration"
 requires-python = ">=3.10"
 dependencies = [
-    "certifi>=2024.0.0",
     "yt-dlp>=2024.0.0",
-    "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
-    "socksio>=1.0.0",
+    "requests>=2.32.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
 ]
-
-[project.scripts]
-hk-scheduler = "app.scheduler:run_scheduler"
-hk-server = "app.scheduler:run_server"
-
-[tool.setuptools.packages.find]
-include = ["app", "app.*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
