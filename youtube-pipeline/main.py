@@ -12,6 +12,7 @@ from app.core.schema import init_schema
 from app.download_service import download_next, download_video_from_db
 from app.downloader import download_video_assets
 from app.logger import setup_logger
+from app.operations import pipeline_status, retry_video, skip_video
 from app.pipeline import run_download_publish
 from app.publish_service import describe_video, publish_next, publish_video
 from app.publisher import publish_to_bilibili
@@ -53,6 +54,17 @@ def build_parser() -> argparse.ArgumentParser:
     events_parser = subparsers.add_parser("events", help="Show recent events.")
     events_parser.add_argument("video_id", nargs="?", help="Optional YouTube video id or URL")
     events_parser.add_argument("--limit", type=int, default=50, help="Maximum rows")
+
+    status_parser = subparsers.add_parser("status", help="Show pipeline status summary.")
+    status_parser.add_argument("--events-limit", type=int, default=20, help="Recent events to include")
+
+    retry_parser = subparsers.add_parser("retry", help="Retry one failed video.")
+    retry_parser.add_argument("video_id", help="YouTube video id or URL")
+    retry_parser.add_argument("--job-type", choices=["download", "describe", "publish"], help="Override retry job type")
+
+    skip_parser = subparsers.add_parser("skip", help="Skip one video.")
+    skip_parser.add_argument("video_id", help="YouTube video id or URL")
+    skip_parser.add_argument("--force", action="store_true", help="Skip even if the video is in an active status")
 
     describe_parser = subparsers.add_parser("describe", help="Generate a Bilibili publish draft for one downloaded video.")
     describe_parser.add_argument("video_id", help="YouTube video id or URL")
@@ -152,6 +164,14 @@ def main() -> int:
                 init_schema(conn)
                 repo = Repository(conn)
                 result = {"events": repo.list_events(video_id=video_id, limit=args.limit)}
+        elif args.command == "status":
+            result = pipeline_status(config, events_limit=args.events_limit)
+        elif args.command == "retry":
+            video_id = parse_video_id(args.video_id)
+            result = retry_video(video_id, config, job_type=args.job_type)
+        elif args.command == "skip":
+            video_id = parse_video_id(args.video_id)
+            result = skip_video(video_id, config, force=args.force)
         elif args.command == "download":
             video_id = parse_video_id(args.video_id)
             logger.info("Stateful download job started: video_id=%s force=%s", video_id, args.force)

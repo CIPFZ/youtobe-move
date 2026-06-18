@@ -316,7 +316,7 @@ youtube-pipeline/app/worker/
    - 失败后延迟重试
    - 超过次数标记 failed
 
-7. 操作命令（后续增强）
+7. 操作命令
    - `youtube-pipeline retry <video_id>`
    - `youtube-pipeline skip <video_id>`
    - `youtube-pipeline status`
@@ -343,13 +343,16 @@ youtube-pipeline/app/worker/
 - `worker`：循环执行，支持 `--once` 和 `--interval`。
 - `WORKER_ENABLE_PUBLISH`：控制 worker 是否允许发布。
 - `WORKER_PUBLISH_DRY_RUN`：控制 worker 发布是否 dry-run。
+- `status`：展示视频状态统计、job 状态统计、失败视频和最近事件。
+- `retry`：将 failed 视频按最近失败 job 或当前产物推断回到 download/describe/publish 阶段。
+- `skip`：手动跳过未发布视频；活跃状态需要 `--force`。
 - 单元测试覆盖发布禁用、发布启用 dry-run、阶段失败继续运行。
+- 单元测试覆盖 status/retry/skip 的主要规则。
 
 未完成：
 
 - 多 worker lock/lease。
 - 失败延迟重试。
-- `retry/skip/status` 操作命令。
 
 ## P4：discovery 自动发现
 

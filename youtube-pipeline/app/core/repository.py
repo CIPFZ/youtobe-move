@@ -80,6 +80,17 @@ class Repository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def count_videos_by_status(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT status, COUNT(*) AS count
+            FROM videos
+            GROUP BY status
+            ORDER BY status
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def update_video_basic_info(
         self,
         video_id: str,
@@ -137,6 +148,34 @@ class Repository:
         result = self.get_video(video_id)
         if result is None:
             raise RuntimeError(f"Video status update failed: {video_id}")
+        return result
+
+    def force_video_status(self, video_id: str, new_status: str, message: str = "", error: str = "") -> dict[str, Any]:
+        ensure_video_status(new_status)
+        video = self.get_video(video_id)
+        if not video:
+            raise KeyError(f"Video not found: {video_id}")
+        old_status = str(video["status"])
+        self.conn.execute(
+            """
+            UPDATE videos
+            SET status=?, last_error=?, updated_at=CURRENT_TIMESTAMP
+            WHERE video_id=?
+            """,
+            (new_status, error, video_id),
+        )
+        self.create_event(
+            video_id,
+            None,
+            "core",
+            "status_forced",
+            message or f"{old_status} -> {new_status}",
+            {"from": old_status, "to": new_status, "error": error},
+        )
+        self.conn.commit()
+        result = self.get_video(video_id)
+        if result is None:
+            raise RuntimeError(f"Video forced status update failed: {video_id}")
         return result
 
     def save_metadata(
@@ -335,6 +374,29 @@ class Repository:
             (video_id, job_type),
         ).fetchone()
         return row_to_dict(row)
+
+    def get_latest_job_for_video(self, video_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT * FROM jobs
+            WHERE video_id=?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (video_id,),
+        ).fetchone()
+        return row_to_dict(row)
+
+    def count_jobs_by_type_status(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT job_type, status, COUNT(*) AS count
+            FROM jobs
+            GROUP BY job_type, status
+            ORDER BY job_type, status
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def get_pending_job(self, job_type: str, video_id: str | None = None) -> dict[str, Any] | None:
         if video_id:
