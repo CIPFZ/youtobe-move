@@ -9,7 +9,7 @@ from app.logger import setup_logger
 from app.media_urls import get_media_urls
 
 
-logger = logging.getLogger("hk-server")
+logger = logging.getLogger("youtube-pipeline")
 
 
 def build_parser() -> argparse.ArgumentParser:

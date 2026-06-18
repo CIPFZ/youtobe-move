@@ -1,0 +1,51 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+class Config:
+    def __init__(self, base_dir: Path | None = None) -> None:
+        self.base_dir = base_dir or Path.cwd()
+        self.output_dir = Path(os.environ["OUTPUT_DIR"])
+        self.video_format = os.environ["VIDEO_FORMAT"]
+        self.audio_format = os.environ["AUDIO_FORMAT"]
+        self.proxy = os.environ["PROXY"]
+        self.cookie_file = os.environ["COOKIE_FILE"]
+        self.socket_timeout = float(os.environ["SOCKET_TIMEOUT"])
+        self.retries = int(os.environ["RETRIES"])
+        self.fragment_retries = int(os.environ["FRAGMENT_RETRIES"])
+        self.retry_backoff_factor = float(os.environ["RETRY_BACKOFF_FACTOR"])
+        self.youtube_api_key = os.environ["YOUTUBE_API_KEY"]
+        self.youtube_api_base = os.environ["YOUTUBE_API_BASE"]
+        self.youtube_video_parts = os.environ["YOUTUBE_VIDEO_PARTS"]
+        self.youtube_search_part = os.environ["YOUTUBE_SEARCH_PART"]
+        self.youtube_search_type = os.environ["YOUTUBE_SEARCH_TYPE"]
+        self.youtube_search_order = os.environ["YOUTUBE_SEARCH_ORDER"]
+        self.ffmpeg_bin = os.environ["FFMPEG_BIN"]
+        self.social_auto_upload_dir = self.resolve_path(os.environ["SOCIAL_AUTO_UPLOAD_DIR"])
+        self.bilibili_account = os.environ["BILIBILI_ACCOUNT"]
+        self.bilibili_tid = int(os.environ["BILIBILI_TID"])
+        self.bilibili_tid_options = os.environ["BILIBILI_TID_OPTIONS"]
+        self.minimax_anthropic_base_url = os.environ["MINIMAX_ANTHROPIC_BASE_URL"].rstrip("/")
+        self.minimax_anthropic_api_key = os.environ["MINIMAX_ANTHROPIC_API_KEY"]
+        self.minimax_anthropic_model = os.environ["MINIMAX_ANTHROPIC_MODEL"]
+        self.minimax_anthropic_version = os.environ["MINIMAX_ANTHROPIC_VERSION"]
+        self.minimax_request_timeout = int(os.environ["MINIMAX_REQUEST_TIMEOUT"])
+        self.minimax_max_tokens = int(os.environ["MINIMAX_MAX_TOKENS"])
+        self.log_level = os.environ["LOG_LEVEL"]
+        self.log_file = os.environ["LOG_FILE"]
+
+    def resolve_path(self, value: str) -> Path:
+        path = Path(value)
+        if path.is_absolute():
+            return path
+        return self.base_dir / path
+
+
+def load_config() -> Config:
+    env_path = Path(".env").resolve()
+    load_dotenv(env_path)
+    return Config(base_dir=env_path.parent)

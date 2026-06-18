@@ -6,18 +6,42 @@ video metadata into publication-ready Chinese title, description and tags.
 
 from __future__ import annotations
 
-import json
 import logging
+import os
+import re
+from pathlib import Path
 from typing import Any
 
 import requests
 
 logger = logging.getLogger(__name__)
 
-# MiniMax Anthropic-compatible endpoint
-AI_BASE_URL = "https://api.minimaxi.com/anthropic"
-AI_API_KEY = "sk-cp-OR7pwhtJGzK99y6OZj7a18vCu_AtzmdQr-jSRTnFP0RdlJo9q2xYkQ3To6wvwaN22apbesZO8uu99jS7RomD_0NpkT4LkM2Fr0E--p5PS6VCMX4TVLiDJc0"
-AI_MODEL = "MiniMax-M1"
+BASE_DIR = Path(__file__).resolve().parent
+
+
+def _load_local_env() -> None:
+    env_path = BASE_DIR / ".env"
+    if not env_path.exists():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
+_load_local_env()
+
+
+AI_BASE_URL = os.getenv("MINIMAX_ANTHROPIC_BASE_URL", "https://api.minimaxi.com/anthropic").rstrip("/")
+AI_API_KEY = os.getenv("MINIMAX_ANTHROPIC_API_KEY", "")
+AI_MODEL = os.getenv("MINIMAX_ANTHROPIC_MODEL", "MiniMax-M3")
+AI_ANTHROPIC_VERSION = os.getenv("MINIMAX_ANTHROPIC_VERSION", "2023-06-01")
+AI_REQUEST_TIMEOUT = int(os.getenv("MINIMAX_REQUEST_TIMEOUT", "60"))
+AI_MAX_TOKENS = int(os.getenv("MINIMAX_MAX_TOKENS", "800"))
 
 SYSTEM_PROMPT = """你是一个专业的视频内容运营专家，负责将 YouTube 视频搬到 Bilibili 平台。
 你的任务是根据视频的元信息，生成中文的发布内容。
@@ -25,27 +49,51 @@ SYSTEM_PROMPT = """你是一个专业的视频内容运营专家，负责将 You
 要求：
 1. 标题：中文，吸引人但不标题党，保留原意，20-50字
 2. 描述：中文自然段落（不是翻译），概括视频内容和亮点，2-4句话，50-200字。末尾须包含 YouTube 原视频链接
-3. 标签：5-8个中文标签，数组格式
+3. 标签：5-8个中文标签，用中文逗号分隔
 
-输出严格的 JSON 格式，不要任何额外文本：
-{"title": "...", "description": "...", "tags": ["...", "..."]}"""
+只能输出下面三行，不要编号，不要 Markdown，不要额外解释：
+标题：...
+描述：...
+标签：标签1，标签2，标签3"""
 
 
-def _call_ai(messages: list[dict], max_tokens: int = 800) -> str:
+def normalize_source_description(description: str, original_url: str) -> str:
+    """Keep body text first and append exactly one source link at the end."""
+    description = (description or "").strip()
+    if not original_url:
+        return description
+
+    source_line_pattern = re.compile(
+        rf"^\s*(?:YouTube)?原视频(?:链接)?[：:]\s*{re.escape(original_url)}\s*$",
+        re.MULTILINE,
+    )
+    description = source_line_pattern.sub("", description)
+    description = description.replace(original_url, "")
+    description = re.sub(r"\n{3,}", "\n\n", description).strip()
+    if description:
+        return f"{description}\n\n原视频链接：{original_url}"
+    return f"原视频链接：{original_url}"
+
+
+def _call_ai(messages: list[dict], max_tokens: int = AI_MAX_TOKENS) -> str:
     """Call MiniMax Anthropic-compatible API."""
+    if not AI_API_KEY:
+        raise RuntimeError("MINIMAX_ANTHROPIC_API_KEY is not configured")
+
     resp = requests.post(
         f"{AI_BASE_URL}/v1/messages",
         headers={
             "Authorization": f"Bearer {AI_API_KEY}",
             "Content-Type": "application/json",
-            "anthropic-version": "2023-06-01",
+            "anthropic-version": AI_ANTHROPIC_VERSION,
         },
         json={
             "model": AI_MODEL,
             "max_tokens": max_tokens,
+            "system": SYSTEM_PROMPT,
             "messages": messages,
         },
-        timeout=60,
+        timeout=AI_REQUEST_TIMEOUT,
     )
     resp.raise_for_status()
     data = resp.json()
@@ -58,14 +106,21 @@ def _call_ai(messages: list[dict], max_tokens: int = 800) -> str:
     return "".join(text_parts)
 
 
-def _extract_json(text: str) -> dict:
-    """Extract JSON from AI response, stripping markdown fences."""
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        # Remove first line (```json or ```) and last line (```)
-        text = "\n".join(lines[1:-1] if len(lines) > 2 else lines[1:])
-    return json.loads(text)
+def _parse_metadata_text(text: str) -> dict[str, Any]:
+    result: dict[str, Any] = {"title": "", "description": "", "tags": []}
+    for raw_line in text.strip().splitlines():
+        line = raw_line.strip()
+        if line.startswith("标题：") or line.startswith("标题:"):
+            result["title"] = line.split("：", 1)[-1].split(":", 1)[-1].strip()
+        elif line.startswith("描述：") or line.startswith("描述:"):
+            result["description"] = line.split("：", 1)[-1].split(":", 1)[-1].strip()
+        elif line.startswith("标签：") or line.startswith("标签:"):
+            raw_tags = line.split("：", 1)[-1].split(":", 1)[-1]
+            tags = raw_tags.replace(",", "，").split("，")
+            result["tags"] = [tag.strip().lstrip("#") for tag in tags if tag.strip()]
+    if not result["title"] or not result["description"]:
+        raise ValueError(f"AI response does not match metadata format: {text[:200]}")
+    return result
 
 
 def generate_chinese_metadata(meta: dict[str, Any], category: str = "") -> dict[str, Any]:
@@ -99,21 +154,16 @@ def generate_chinese_metadata(meta: dict[str, Any], category: str = "") -> dict[
     if original_desc:
         video_info["原始描述"] = original_desc[:500]
 
-    user_msg = json.dumps(video_info, ensure_ascii=False, indent=2)
+    user_msg = "\n".join(f"{key}: {value}" for key, value in video_info.items())
     prompt = f"请根据以下视频信息生成中文发布内容：\n\n{user_msg}"
 
     try:
         raw = _call_ai([
-            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ])
-        result = _extract_json(raw)
+        result = _parse_metadata_text(raw)
 
-        # Ensure the YouTube link is in the description
-        desc = result.get("description", "")
-        if original_url not in desc:
-            desc = f"{desc}\n\n原视频: {original_url}"
-        result["description"] = desc
+        result["description"] = normalize_source_description(result.get("description", ""), original_url)
 
         logger.info("AI generated Chinese metadata for %s", video_id)
         return result
@@ -121,14 +171,16 @@ def generate_chinese_metadata(meta: dict[str, Any], category: str = "") -> dict[
     except Exception as exc:
         logger.warning("AI metadata generation failed: %s, using fallback", exc)
         # Fallback: use original info
-        title = meta.get("title", "")[:80]
+        original_title = meta.get("title", "") or meta.get("fulltitle", "") or video_id
+        channel = meta.get("channel", meta.get("uploader", "N/A"))
+        title = f"{original_title} | 中文搬运"[:80]
         desc = (
-            f"{meta.get('description', '')[:500]}\n\n"
-            f"原视频: {original_url}\n"
-            f"频道: {meta.get('channel', meta.get('uploader', 'N/A'))}"
+            f"本视频搬运自 YouTube 频道 {channel}，内容标题为《{original_title}》。"
+            f"后续会继续补充更完整的中文介绍。\n\n"
+            f"频道: {channel}"
         )
         return {
             "title": title,
-            "description": desc,
-            "tags": meta.get("tags", [])[:8],
+            "description": normalize_source_description(desc, original_url),
+            "tags": ["YouTube搬运", "视频分享", *meta.get("tags", [])[:6]],
         }

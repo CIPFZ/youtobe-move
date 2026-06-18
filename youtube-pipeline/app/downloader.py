@@ -3,16 +3,19 @@ from __future__ import annotations
 import json
 import logging
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import yt_dlp
 
 from app.config import Config
 
 
-logger = logging.getLogger("hk-server")
+logger = logging.getLogger("youtube-pipeline")
 
 
 def json_default(value: Any) -> str:
@@ -141,24 +144,65 @@ def download_poster(info: dict[str, Any], out_dir: Path, config: Config) -> Path
     target = out_dir / f"poster.{ext}"
 
     proxies = {"http": config.proxy, "https": config.proxy} if config.proxy else None
+    retry = Retry(
+        total=config.retries,
+        connect=config.retries,
+        read=config.retries,
+        status=config.retries,
+        backoff_factor=config.retry_backoff_factor,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=("GET",),
+    )
+    session = requests.Session()
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
     try:
-        with requests.get(
-            thumb_url,
-            headers={"User-Agent": "Mozilla/5.0"},
-            proxies=proxies,
-            timeout=config.socket_timeout,
-            stream=True,
-        ) as response:
-            response.raise_for_status()
-            with target.open("wb") as fp:
-                for chunk in response.iter_content(chunk_size=1024 * 128):
-                    if chunk:
-                        fp.write(chunk)
+        with session:
+            with session.get(
+                thumb_url,
+                headers={"User-Agent": "Mozilla/5.0"},
+                proxies=proxies,
+                timeout=config.socket_timeout,
+                stream=True,
+            ) as response:
+                response.raise_for_status()
+                with target.open("wb") as fp:
+                    for chunk in response.iter_content(chunk_size=1024 * 128):
+                        if chunk:
+                            fp.write(chunk)
     except requests.RequestException as exc:
         logger.warning("Poster download failed: %s", exc)
         return None
 
     logger.info("Downloaded poster: %s", target)
+    return target
+
+
+def merge_video_audio(video_id: str, video_path: Path, audio_path: Path, out_dir: Path, config: Config) -> Path:
+    target = out_dir / f"{video_id}_merge.mp4"
+    if target.exists():
+        target.unlink()
+
+    cmd = [
+        config.ffmpeg_bin,
+        "-y",
+        "-i",
+        str(video_path),
+        "-i",
+        str(audio_path),
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        str(target),
+    ]
+    logger.info("Merging video/audio: output=%s", target)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        logger.error("ffmpeg merge failed. stdout=%s stderr=%s", proc.stdout, proc.stderr)
+        raise RuntimeError(f"ffmpeg merge failed with exit code {proc.returncode}")
+    logger.info("Merged video/audio: %s", target)
     return target
 
 
@@ -173,6 +217,7 @@ def download_video_assets(url: str, config: Config) -> dict[str, str]:
     video_path = download_stream(url, out_dir, "video", config.video_format, config)
     audio_path = download_stream(url, out_dir, "audio", config.audio_format, config)
     poster_path = download_poster(info, out_dir, config)
+    merged_path = merge_video_audio(video_id, video_path, audio_path, out_dir, config)
 
     return {
         "video_id": video_id,
@@ -182,4 +227,5 @@ def download_video_assets(url: str, config: Config) -> dict[str, str]:
         "video": str(video_path),
         "audio": str(audio_path),
         "poster": str(poster_path) if poster_path else "",
+        "merged": str(merged_path),
     }

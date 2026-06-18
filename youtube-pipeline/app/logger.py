@@ -20,4 +20,4 @@ def setup_logger(log_level: str, log_file: str = "") -> logging.Logger:
         handlers=handlers,
         force=True,
     )
-    return logging.getLogger("hk-server")
+    return logging.getLogger("youtube-pipeline")

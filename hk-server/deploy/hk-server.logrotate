@@ -1,8 +1,0 @@
-/home/ytq/work/youtobe-move/hk-server/runtime/logs/*.log {
-  daily
-  rotate 14
-  compress
-  missingok
-  notifempty
-  copytruncate
-}

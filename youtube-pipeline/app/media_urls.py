@@ -9,7 +9,7 @@ from app.config import Config
 from app.downloader import build_ytdlp_options
 
 
-logger = logging.getLogger("hk-server")
+logger = logging.getLogger("youtube-pipeline")
 
 
 def extract_media_info(url: str, config: Config) -> dict[str, Any]:
