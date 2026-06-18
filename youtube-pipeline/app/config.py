@@ -10,6 +10,8 @@ class Config:
     def __init__(self, base_dir: Path | None = None) -> None:
         self.base_dir = base_dir or Path.cwd()
         self.output_dir = Path(os.environ["OUTPUT_DIR"])
+        self.db_path = self.resolve_path(os.environ["DB_PATH"])
+        self.tmp_dir = self.resolve_path(os.environ["TMP_DIR"])
         self.video_format = os.environ["VIDEO_FORMAT"]
         self.audio_format = os.environ["AUDIO_FORMAT"]
         self.proxy = os.environ["PROXY"]

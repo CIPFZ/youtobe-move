@@ -6,10 +6,14 @@ import logging
 from pathlib import Path
 
 from app.config import load_config
+from app.core.db import connect
+from app.core.repository import Repository
+from app.core.schema import init_schema
 from app.downloader import download_video_assets
 from app.logger import setup_logger
 from app.pipeline import run_download_publish
 from app.publisher import publish_to_bilibili
+from app.youtube_api import parse_video_id
 
 
 logger = logging.getLogger("youtube-pipeline")
@@ -21,6 +25,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     download_parser = subparsers.add_parser("download", help="Download and merge one YouTube video.")
     download_parser.add_argument("url", help="YouTube video URL")
+
+    subparsers.add_parser("init-db", help="Initialize the SQLite database.")
+
+    add_url_parser = subparsers.add_parser("add-url", help="Add one YouTube URL to the local queue.")
+    add_url_parser.add_argument("url", help="YouTube video URL")
+    add_url_parser.add_argument("--status", default="selected", help="Initial video status, default: selected")
+
+    list_parser = subparsers.add_parser("list", help="List videos in the local database.")
+    list_parser.add_argument("--status", help="Filter by video status")
+    list_parser.add_argument("--limit", type=int, default=50, help="Maximum rows")
+    list_parser.add_argument("--offset", type=int, default=0, help="Offset")
+
+    show_parser = subparsers.add_parser("show", help="Show one video record.")
+    show_parser.add_argument("video_id", help="YouTube video id or URL")
+
+    events_parser = subparsers.add_parser("events", help="Show recent events.")
+    events_parser.add_argument("video_id", nargs="?", help="Optional YouTube video id or URL")
+    events_parser.add_argument("--limit", type=int, default=50, help="Maximum rows")
 
     publish_parser = subparsers.add_parser("publish", help="Publish an existing downloaded video directory to Bilibili.")
     publish_parser.add_argument("data_dir", type=Path, help="Directory containing meta.json and <id>_merge.mp4")
@@ -40,7 +62,40 @@ def main() -> int:
     setup_logger(config.log_level, config.log_file)
 
     try:
-        if args.command == "download":
+        if args.command == "init-db":
+            with connect(config.db_path) as conn:
+                init_schema(conn)
+            result = {"db_path": str(config.db_path), "initialized": True}
+        elif args.command == "add-url":
+            video_id = parse_video_id(args.url)
+            with connect(config.db_path) as conn:
+                init_schema(conn)
+                repo = Repository(conn)
+                video = repo.upsert_video(video_id=video_id, source_url=args.url, status=args.status)
+                repo.create_job("download", video_id=video_id, payload={"url": args.url})
+                conn.commit()
+            result = {"video": video}
+        elif args.command == "list":
+            with connect(config.db_path) as conn:
+                init_schema(conn)
+                repo = Repository(conn)
+                result = {"videos": repo.list_videos(status=args.status, limit=args.limit, offset=args.offset)}
+        elif args.command == "show":
+            video_id = parse_video_id(args.video_id)
+            with connect(config.db_path) as conn:
+                init_schema(conn)
+                repo = Repository(conn)
+                video = repo.get_video(video_id)
+            if video is None:
+                raise RuntimeError(f"Video not found: {video_id}")
+            result = {"video": video}
+        elif args.command == "events":
+            video_id = parse_video_id(args.video_id) if args.video_id else None
+            with connect(config.db_path) as conn:
+                init_schema(conn)
+                repo = Repository(conn)
+                result = {"events": repo.list_events(video_id=video_id, limit=args.limit)}
+        elif args.command == "download":
             logger.info("Download job started: url=%s", args.url)
             result = download_video_assets(args.url, config)
             logger.info("Download job completed: video_id=%s output_dir=%s", result["video_id"], result["output_dir"])
