@@ -227,3 +227,19 @@ def publish_next(config: Config, dry_run: bool = False, force: bool = False) -> 
             video_id = str(ready[0]["video_id"])
 
     return publish_video(video_id, config, dry_run=dry_run, force=force)
+
+
+def describe_next(config: Config, force: bool = False) -> dict[str, Any]:
+    with connect(config.db_path) as conn:
+        init_schema(conn)
+        repo = Repository(conn)
+        job = repo.get_pending_job("describe")
+        if job:
+            video_id = str(job["video_id"])
+        else:
+            downloaded = repo.list_videos(status="downloaded", limit=1)
+            if not downloaded:
+                return {"status": "empty", "message": "No downloaded videos waiting for describe"}
+            video_id = str(downloaded[0]["video_id"])
+
+    return describe_video(video_id, config, force=force)

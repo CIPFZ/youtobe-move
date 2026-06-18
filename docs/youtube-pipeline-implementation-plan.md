@@ -275,53 +275,81 @@ youtube-pipeline/app/publish_service.py
 ```text
 youtube-pipeline/app/worker/
   __init__.py
-  loop.py
   runner.py
-  scheduler.py
 ```
 
 ### 任务拆解
 
-1. jobs 领取机制
-   - 找到可执行 job
-   - 设置 `locked_at`
-   - 设置 `lock_owner`
-   - 防止重复执行
-
-2. job runner
+1. job runner
    - download job
    - describe job
    - publish job
    - cleanup job 预留
 
-3. 重试策略
+2. worker-run 一次性执行
+   - `youtube-pipeline worker-run`
+   - 每轮按顺序执行 `download-next`、`describe-next`、`publish-next`
+   - 每个阶段最多处理一条
+   - 单个阶段失败不阻断后续阶段
+   - 写入 `worker_run_started`、`worker_run_finished` events
+
+3. worker 循环
+   - `youtube-pipeline worker`
+   - 支持 `--once`
+   - 支持 `--interval`
+   - 使用 `WORKER_INTERVAL_SECONDS`
+
+4. 发布安全开关
+   - `WORKER_ENABLE_PUBLISH=false` 时 worker 不执行发布
+   - `WORKER_PUBLISH_DRY_RUN=true` 时 worker 发布只 dry-run
+   - CLI 可用 `--enable-publish`、`--publish-dry-run` 覆盖本轮行为
+
+5. jobs 领取机制（后续增强）
+   - 找到可执行 job
+   - 设置 `locked_at`
+   - 设置 `lock_owner`
+   - 防止重复执行
+
+6. 重试策略（后续增强）
    - `attempts`
    - `max_attempts`
    - 失败后延迟重试
    - 超过次数标记 failed
 
-4. worker 循环
-   - `youtube-pipeline worker`
-   - 支持 `--once`
-   - 支持轮询间隔
-   - 单任务失败不中断循环
-
-5. 操作命令
+7. 操作命令（后续增强）
    - `youtube-pipeline retry <video_id>`
    - `youtube-pipeline skip <video_id>`
    - `youtube-pipeline status`
 
 ### 验收标准
 
-- 添加 URL 后 worker 能自动下载、生成草稿、发布。
+- 添加 URL 后 worker 能自动下载、生成草稿。
+- 发布在 env 明确开启后才会由 worker 执行。
 - 任务失败后能记录并继续处理其它任务。
 - 进程重启后能继续处理未完成任务。
-- 同一任务不会被重复领取。
+- 第一版单 worker 运行；多 worker lock/lease 后续补。
 
 ### 风险点
 
 - SQLite 并发写要保持简单，第一版单 worker 即可。
 - 发布任务需要节流，避免短时间连续投稿。
+- 自动发布必须默认关闭，避免未审核草稿被 worker 直接投递。
+
+### 当前状态
+
+已完成第一版：
+
+- `worker-run`：执行一轮 download/describe/publish。
+- `worker`：循环执行，支持 `--once` 和 `--interval`。
+- `WORKER_ENABLE_PUBLISH`：控制 worker 是否允许发布。
+- `WORKER_PUBLISH_DRY_RUN`：控制 worker 发布是否 dry-run。
+- 单元测试覆盖发布禁用、发布启用 dry-run、阶段失败继续运行。
+
+未完成：
+
+- 多 worker lock/lease。
+- 失败延迟重试。
+- `retry/skip/status` 操作命令。
 
 ## P4：discovery 自动发现
 

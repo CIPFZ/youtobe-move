@@ -37,6 +37,9 @@ class Config:
         self.minimax_anthropic_version = os.environ["MINIMAX_ANTHROPIC_VERSION"]
         self.minimax_request_timeout = int(os.environ["MINIMAX_REQUEST_TIMEOUT"])
         self.minimax_max_tokens = int(os.environ["MINIMAX_MAX_TOKENS"])
+        self.worker_interval_seconds = int(os.environ["WORKER_INTERVAL_SECONDS"])
+        self.worker_enable_publish = os.environ["WORKER_ENABLE_PUBLISH"].strip().lower() in {"1", "true", "yes", "on"}
+        self.worker_publish_dry_run = os.environ["WORKER_PUBLISH_DRY_RUN"].strip().lower() in {"1", "true", "yes", "on"}
         self.log_level = os.environ["LOG_LEVEL"]
         self.log_file = os.environ["LOG_FILE"]
 

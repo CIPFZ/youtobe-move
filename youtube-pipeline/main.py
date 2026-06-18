@@ -15,6 +15,7 @@ from app.logger import setup_logger
 from app.pipeline import run_download_publish
 from app.publish_service import describe_video, publish_next, publish_video
 from app.publisher import publish_to_bilibili
+from app.worker import run_worker_loop, run_worker_once
 from app.youtube_api import parse_video_id
 
 
@@ -65,6 +66,26 @@ def build_parser() -> argparse.ArgumentParser:
     publish_next_parser = subparsers.add_parser("publish-next", help="Publish the next ready video to Bilibili.")
     publish_next_parser.add_argument("--dry-run", action="store_true", help="Build publish payload without uploading")
     publish_next_parser.add_argument("--force", action="store_true", help="Allow publishing even if a published record exists")
+
+    worker_run_parser = subparsers.add_parser("worker-run", help="Run one worker cycle.")
+    worker_run_parser.add_argument(
+        "--enable-publish",
+        action="store_true",
+        default=None,
+        help="Allow this run to execute publish jobs",
+    )
+    worker_run_parser.add_argument("--publish-dry-run", action="store_true", help="Use dry-run for publish jobs in this run")
+
+    worker_parser = subparsers.add_parser("worker", help="Run the worker loop.")
+    worker_parser.add_argument("--once", action="store_true", help="Run one cycle and exit")
+    worker_parser.add_argument("--interval", type=int, help="Loop interval in seconds")
+    worker_parser.add_argument(
+        "--enable-publish",
+        action="store_true",
+        default=None,
+        help="Allow worker to execute publish jobs",
+    )
+    worker_parser.add_argument("--publish-dry-run", action="store_true", help="Use dry-run for publish jobs")
 
     publish_dir_parser = subparsers.add_parser("publish-dir", help="Publish an existing downloaded directory to Bilibili.")
     publish_dir_parser.add_argument("data_dir", type=Path, help="Directory containing meta.json and <id>_merge.mp4")
@@ -163,6 +184,24 @@ def main() -> int:
             logger.info("Publish-next started: dry_run=%s force=%s", args.dry_run, args.force)
             result = publish_next(config, dry_run=args.dry_run, force=args.force)
             logger.info("Publish-next completed: status=%s", result["status"])
+        elif args.command == "worker-run":
+            logger.info("Worker-run started")
+            result = run_worker_once(
+                config,
+                enable_publish=args.enable_publish,
+                publish_dry_run=args.publish_dry_run if args.publish_dry_run else None,
+            )
+            logger.info("Worker-run completed: status=%s", result["status"])
+        elif args.command == "worker":
+            logger.info("Worker loop started: once=%s interval=%s", args.once, args.interval)
+            result = run_worker_loop(
+                config,
+                interval_seconds=args.interval,
+                enable_publish=args.enable_publish,
+                publish_dry_run=args.publish_dry_run if args.publish_dry_run else None,
+                max_runs=1 if args.once else None,
+            )
+            logger.info("Worker loop stopped: status=%s", result["status"])
         elif args.command == "publish-dir":
             logger.info("Publish-dir job started: data_dir=%s", args.data_dir)
             result = publish_to_bilibili(args.data_dir, config, tid=args.tid, dry_run=args.dry_run)
