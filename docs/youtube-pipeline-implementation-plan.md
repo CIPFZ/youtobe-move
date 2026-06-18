@@ -111,54 +111,53 @@ youtube-pipeline/app/core/
 
 ### 范围
 
-新增或重构目录：
+新增：
 
 ```text
-youtube-pipeline/app/downloader/
-  __init__.py
-  service.py
-  ytdlp.py
-  merger.py
-  files.py
+youtube-pipeline/app/download_service.py
 ```
 
-现有 `app/downloader.py` 拆分进入该模块。
+现阶段保留 `app/downloader.py` 作为底层 yt-dlp/ffmpeg 能力，不拆目录。`download_service.py` 只做 DB 状态、job、events、文件路径持久化编排。
 
 ### 任务拆解
 
 1. 下载服务
-   - 输入 `video_id` 或 `source_url`
+   - 输入 `video_id`
    - 从 DB 读取视频记录
    - 状态 `selected -> downloading`
    - 下载完成后 `downloading -> downloaded`
    - 失败后写 `failed`
+   - 已下载且 merged 文件存在时默认跳过
+   - `--force` 允许重新下载，状态允许 `downloaded -> downloading`
 
 2. yt-dlp 元数据
    - 获取完整 meta
-   - 关键字段写入 `videos`
-   - 完整 JSON 写入 `video_metadata.ytdlp_meta_json`
-   - `meta.json` 可继续作为媒体归档保存
+   - 完整 JSON 只保存为 `runtime/downloads/<video_id>/meta.json`
+   - DB 只保存基础字段：`title/channel/duration/view_count/category/source_url/status`
+   - 不把完整 yt-dlp JSON 复制进 `video_metadata`
 
-3. 原子下载
-   - 下载到 `runtime/tmp/<job_id>/`
-   - 成功后移动到 `runtime/downloads/<video_id>/`
-   - 失败不删除旧文件
+3. 下载覆盖策略
+   - 第一版本不做兼容迁移和旧产物保护
+   - 下载前允许覆盖同名 `video.*` / `audio.*`
+   - 合并前允许覆盖 `<video_id>_merge.mp4`
 
-4. 原子合并
-   - ffmpeg 输出到临时文件
-   - 成功后替换 `<video_id>_merge.mp4`
-   - 失败不删除旧 merged 文件
-
-5. 文件记录
+4. 文件记录
    - `media_files.meta_path`
    - `media_files.video_path`
    - `media_files.audio_path`
    - `media_files.poster_path`
    - `media_files.merged_path`
 
+5. Job 与 events
+   - `add-url` 创建 pending download job
+   - `download <video_id>` 没有 pending job 时自动创建
+   - job 状态：`pending -> running -> succeeded/failed`
+   - 阶段事件：`download_started`、`metadata_saved`、`video_downloaded`、`audio_downloaded`、`poster_downloaded`、`merge_done`、`download_done`、`download_failed`
+
 6. CLI 接入
    - `youtube-pipeline download <video_id>`
    - `youtube-pipeline download-next`
+   - `youtube-pipeline download-url <url>` 保留为无 DB 的调试入口
 
 ### 验收标准
 
@@ -166,13 +165,23 @@ youtube-pipeline/app/downloader/
 - 下载完成后 DB 状态是 `downloaded`。
 - 文件路径写入 `media_files`。
 - 下载失败写 `events` 和 `last_error`。
-- 旧文件在新下载失败时不被破坏。
-- 单元测试覆盖原子替换和失败保留旧文件。
+- 合并文件包含 video/audio 流。
+- 单元测试覆盖成功下载、已有文件跳过、失败落库、pending job 选择。
 
 ### 风险点
 
 - yt-dlp 会产生不同扩展名，文件定位要稳定。
 - ffmpeg 失败信息要保存，便于 Web 展示。
+- 当前没有并发锁，P3 worker 阶段再补 lock/lease。
+
+### 当前状态
+
+已完成。使用以下链接完成真实下载验证：
+
+- `https://www.youtube.com/watch?v=KsjVUJMWzks`
+- `https://www.youtube.com/watch?v=dRVkQsZFISU`
+
+两个 merged 文件均经 `ffprobe` 验证包含 H.264 video 和 AAC audio。
 
 ## P2：publisher 发布模块状态化
 

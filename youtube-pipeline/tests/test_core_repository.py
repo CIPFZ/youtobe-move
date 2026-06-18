@@ -59,6 +59,19 @@ class CoreRepositoryTests(unittest.TestCase):
         self.assertIn("abc123def45", metadata["ytdlp_meta_json"])
         self.assertTrue(files["merged_path"].endswith("abc123def45_merge.mp4"))
 
+    def test_job_helpers_find_and_update_pending_job(self):
+        repo = self._repo()
+        repo.upsert_video("abc123def45", "https://www.youtube.com/watch?v=abc123def45")
+        job_id = repo.create_job("download", video_id="abc123def45", payload={"url": "https://example.test"})
+
+        pending = repo.get_pending_job("download", video_id="abc123def45")
+        self.assertEqual(pending["id"], job_id)
+
+        running = repo.update_job_status(job_id, "running")
+        self.assertEqual(running["status"], "running")
+        self.assertEqual(running["attempts"], 1)
+        self.assertIsNone(repo.get_pending_job("download", video_id="abc123def45"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,7 +19,7 @@ ALLOWED_VIDEO_TRANSITIONS = {
     "discovered": {"selected", "skipped", "failed"},
     "selected": {"downloading", "skipped", "failed"},
     "downloading": {"downloaded", "failed"},
-    "downloaded": {"describing", "ready_to_publish", "skipped", "failed"},
+    "downloaded": {"downloading", "describing", "ready_to_publish", "skipped", "failed"},
     "describing": {"ready_to_publish", "failed"},
     "ready_to_publish": {"publishing", "skipped", "failed"},
     "publishing": {"published", "failed"},

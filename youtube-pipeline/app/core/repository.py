@@ -4,7 +4,7 @@ import json
 import sqlite3
 from typing import Any
 
-from app.core.status import ensure_video_status, ensure_video_transition
+from app.core.status import JOB_STATUSES, ensure_video_status, ensure_video_transition
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -79,6 +79,37 @@ class Repository:
                 (limit, offset),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def update_video_basic_info(
+        self,
+        video_id: str,
+        title: str = "",
+        channel: str = "",
+        duration: int | None = None,
+        view_count: int | None = None,
+        category: str = "",
+    ) -> dict[str, Any]:
+        if not self.get_video(video_id):
+            raise KeyError(f"Video not found: {video_id}")
+        self.conn.execute(
+            """
+            UPDATE videos
+            SET title=COALESCE(NULLIF(?, ''), title),
+                channel=COALESCE(NULLIF(?, ''), channel),
+                duration=COALESCE(?, duration),
+                view_count=COALESCE(?, view_count),
+                category=COALESCE(NULLIF(?, ''), category),
+                updated_at=CURRENT_TIMESTAMP
+            WHERE video_id=?
+            """,
+            (title, channel, duration, view_count, category, video_id),
+        )
+        self.create_event(video_id, None, "core", "video_basic_info_saved", "Video basic info saved")
+        self.conn.commit()
+        result = self.get_video(video_id)
+        if result is None:
+            raise RuntimeError(f"Video basic info update failed: {video_id}")
+        return result
 
     def update_video_status(self, video_id: str, new_status: str, message: str = "", error: str = "") -> dict[str, Any]:
         video = self.get_video(video_id)
@@ -157,6 +188,10 @@ class Repository:
         )
         self.create_event(video_id, None, "core", "media_files_saved", "Media file paths saved")
         self.conn.commit()
+
+    def get_media_files(self, video_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute("SELECT * FROM media_files WHERE video_id=?", (video_id,)).fetchone()
+        return row_to_dict(row)
 
     def save_publish_draft(
         self,
@@ -249,6 +284,92 @@ class Repository:
         self.create_event(video_id, job_id, "core", "job_created", f"Job created: {job_type}")
         self.conn.commit()
         return job_id
+
+    def get_job(self, job_id: int) -> dict[str, Any] | None:
+        row = self.conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+        return row_to_dict(row)
+
+    def get_latest_job(self, video_id: str, job_type: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT * FROM jobs
+            WHERE video_id=? AND job_type=?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (video_id, job_type),
+        ).fetchone()
+        return row_to_dict(row)
+
+    def get_pending_job(self, job_type: str, video_id: str | None = None) -> dict[str, Any] | None:
+        if video_id:
+            row = self.conn.execute(
+                """
+                SELECT * FROM jobs
+                WHERE job_type=? AND status='pending' AND video_id=?
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                (job_type, video_id),
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                """
+                SELECT jobs.* FROM jobs
+                JOIN videos ON videos.video_id = jobs.video_id
+                WHERE jobs.job_type=? AND jobs.status='pending' AND videos.status IN ('selected', 'failed')
+                ORDER BY jobs.id ASC
+                LIMIT 1
+                """,
+                (job_type,),
+            ).fetchone()
+        return row_to_dict(row)
+
+    def update_job_status(self, job_id: int, status: str, error: str = "") -> dict[str, Any]:
+        if status not in JOB_STATUSES:
+            raise ValueError(f"Unknown job status: {status}")
+        job = self.get_job(job_id)
+        if not job:
+            raise KeyError(f"Job not found: {job_id}")
+
+        if status == "running":
+            self.conn.execute(
+                """
+                UPDATE jobs
+                SET status=?, attempts=attempts + 1, started_at=COALESCE(started_at, CURRENT_TIMESTAMP),
+                    error=?, updated_at=CURRENT_TIMESTAMP
+                WHERE id=?
+                """,
+                (status, error, job_id),
+            )
+        elif status in {"succeeded", "failed", "cancelled"}:
+            self.conn.execute(
+                """
+                UPDATE jobs
+                SET status=?, finished_at=CURRENT_TIMESTAMP, error=?, updated_at=CURRENT_TIMESTAMP
+                WHERE id=?
+                """,
+                (status, error, job_id),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE jobs SET status=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (status, error, job_id),
+            )
+
+        self.create_event(
+            job["video_id"],
+            job_id,
+            "core",
+            "job_status_changed",
+            f"Job status changed: {job['status']} -> {status}",
+            {"from": job["status"], "to": status, "error": error},
+        )
+        self.conn.commit()
+        result = self.get_job(job_id)
+        if result is None:
+            raise RuntimeError(f"Job status update failed: {job_id}")
+        return result
 
     def create_event(
         self,

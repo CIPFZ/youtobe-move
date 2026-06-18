@@ -5,7 +5,7 @@ import logging
 import re
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -16,6 +16,8 @@ from app.config import Config
 
 
 logger = logging.getLogger("youtube-pipeline")
+
+DownloadEventCallback = Callable[[str, str, dict[str, Any] | None], None]
 
 
 def json_default(value: Any) -> str:
@@ -206,7 +208,35 @@ def merge_video_audio(video_id: str, video_path: Path, audio_path: Path, out_dir
     return target
 
 
-def download_video_assets(url: str, config: Config) -> dict[str, str]:
+def extract_basic_video_fields(info: dict[str, Any]) -> dict[str, Any]:
+    channel = str(info.get("channel") or info.get("uploader") or "")
+    categories = info.get("categories")
+    category = ""
+    if isinstance(categories, list) and categories:
+        category = str(categories[0] or "")
+    elif info.get("category"):
+        category = str(info.get("category") or "")
+
+    duration_value = info.get("duration")
+    view_count_value = info.get("view_count")
+    return {
+        "title": str(info.get("title") or ""),
+        "channel": channel,
+        "duration": int(duration_value) if duration_value is not None else None,
+        "view_count": int(view_count_value) if view_count_value is not None else None,
+        "category": category,
+    }
+
+
+def download_video_assets(
+    url: str,
+    config: Config,
+    event_callback: DownloadEventCallback | None = None,
+) -> dict[str, Any]:
+    def emit(event_type: str, message: str, payload: dict[str, Any] | None = None) -> None:
+        if event_callback:
+            event_callback(event_type, message, payload)
+
     info = extract_info(url, config)
     video_id = str(info["id"])
     out_dir = config.output_dir / video_id
@@ -214,14 +244,20 @@ def download_video_assets(url: str, config: Config) -> dict[str, str]:
 
     meta_path = out_dir / "meta.json"
     write_meta(info, meta_path)
+    emit("metadata_saved", "Metadata saved", {"path": str(meta_path)})
     video_path = download_stream(url, out_dir, "video", config.video_format, config)
+    emit("video_downloaded", "Video stream downloaded", {"path": str(video_path)})
     audio_path = download_stream(url, out_dir, "audio", config.audio_format, config)
+    emit("audio_downloaded", "Audio stream downloaded", {"path": str(audio_path)})
     poster_path = download_poster(info, out_dir, config)
+    emit("poster_downloaded", "Poster downloaded", {"path": str(poster_path) if poster_path else ""})
     merged_path = merge_video_audio(video_id, video_path, audio_path, out_dir, config)
+    emit("merge_done", "Video and audio merged", {"path": str(merged_path)})
 
+    basic_fields = extract_basic_video_fields(info)
     return {
         "video_id": video_id,
-        "title": str(info.get("title") or ""),
+        **basic_fields,
         "output_dir": str(out_dir),
         "meta": str(meta_path),
         "video": str(video_path),
