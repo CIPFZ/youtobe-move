@@ -9,6 +9,7 @@ from app.config import load_config
 from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
+from app.discovery import discover_videos
 from app.download_service import download_next, download_video_from_db
 from app.downloader import download_video_assets
 from app.logger import setup_logger
@@ -65,6 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
     skip_parser = subparsers.add_parser("skip", help="Skip one video.")
     skip_parser.add_argument("video_id", help="YouTube video id or URL")
     skip_parser.add_argument("--force", action="store_true", help="Skip even if the video is in an active status")
+
+    discover_parser = subparsers.add_parser("discover", help="Discover YouTube videos from configured sources.")
+    discover_parser.add_argument("--source", choices=["search", "trending", "channel_uploads"], help="Run only one source type")
+    discover_parser.add_argument("--dry-run", action="store_true", help="Fetch and filter candidates without inserting")
 
     describe_parser = subparsers.add_parser("describe", help="Generate a Bilibili publish draft for one downloaded video.")
     describe_parser.add_argument("video_id", help="YouTube video id or URL")
@@ -172,6 +177,10 @@ def main() -> int:
         elif args.command == "skip":
             video_id = parse_video_id(args.video_id)
             result = skip_video(video_id, config, force=args.force)
+        elif args.command == "discover":
+            logger.info("Discovery started: source=%s dry_run=%s", args.source, args.dry_run)
+            result = discover_videos(config, source_type=args.source, dry_run=args.dry_run)
+            logger.info("Discovery completed: inserted=%s accepted=%s", result["inserted_count"], result["accepted_count"])
         elif args.command == "download":
             video_id = parse_video_id(args.video_id)
             logger.info("Stateful download job started: video_id=%s force=%s", video_id, args.force)

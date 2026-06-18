@@ -40,6 +40,16 @@ class Config:
         self.worker_interval_seconds = int(os.environ["WORKER_INTERVAL_SECONDS"])
         self.worker_enable_publish = os.environ["WORKER_ENABLE_PUBLISH"].strip().lower() in {"1", "true", "yes", "on"}
         self.worker_publish_dry_run = os.environ["WORKER_PUBLISH_DRY_RUN"].strip().lower() in {"1", "true", "yes", "on"}
+        self.discovery_sources_json = os.environ["DISCOVERY_SOURCES_JSON"]
+        self.discovery_max_results_per_source = int(os.environ["DISCOVERY_MAX_RESULTS_PER_SOURCE"])
+        self.discovery_min_duration_seconds = int(os.environ["DISCOVERY_MIN_DURATION_SECONDS"])
+        self.discovery_max_duration_seconds = int(os.environ["DISCOVERY_MAX_DURATION_SECONDS"])
+        self.discovery_min_view_count = int(os.environ["DISCOVERY_MIN_VIEW_COUNT"])
+        self.discovery_title_blocklist = os.environ["DISCOVERY_TITLE_BLOCKLIST"]
+        self.discovery_channel_allowlist = os.environ["DISCOVERY_CHANNEL_ALLOWLIST"]
+        self.discovery_channel_blocklist = os.environ["DISCOVERY_CHANNEL_BLOCKLIST"]
+        self.discovery_category_allowlist = os.environ["DISCOVERY_CATEGORY_ALLOWLIST"]
+        self.discovery_category_blocklist = os.environ["DISCOVERY_CATEGORY_BLOCKLIST"]
         self.log_level = os.environ["LOG_LEVEL"]
         self.log_file = os.environ["LOG_FILE"]
 

@@ -84,17 +84,54 @@ def get_video_meta(config: Config, video_id_or_url: str) -> dict[str, Any]:
     return items[0]
 
 
-def search_videos(config: Config, keyword: str, max_results: int) -> list[dict[str, Any]]:
+def get_videos_meta(config: Config, video_ids: list[str]) -> list[dict[str, Any]]:
+    ids = [video_id for video_id in dict.fromkeys(video_ids) if video_id]
+    if not ids:
+        return []
+    videos_data = request_youtube(
+        config,
+        "videos",
+        {
+            "part": config.youtube_video_parts,
+            "id": ",".join(ids[:50]),
+            "maxResults": min(len(ids), 50),
+        },
+    )
+    return videos_data.get("items") or []
+
+
+def search_videos(
+    config: Config,
+    keyword: str,
+    max_results: int,
+    order: str | None = None,
+    channel_id: str | None = None,
+    published_after: str | None = None,
+    region_code: str | None = None,
+    relevance_language: str | None = None,
+    video_category_id: str | None = None,
+) -> list[dict[str, Any]]:
+    params: dict[str, Any] = {
+        "part": config.youtube_search_part,
+        "q": keyword,
+        "type": config.youtube_search_type,
+        "order": order or config.youtube_search_order,
+        "maxResults": max_results,
+    }
+    if channel_id:
+        params["channelId"] = channel_id
+    if published_after:
+        params["publishedAfter"] = published_after
+    if region_code:
+        params["regionCode"] = region_code
+    if relevance_language:
+        params["relevanceLanguage"] = relevance_language
+    if video_category_id:
+        params["videoCategoryId"] = video_category_id
     search_data = request_youtube(
         config,
         "search",
-        {
-            "part": config.youtube_search_part,
-            "q": keyword,
-            "type": config.youtube_search_type,
-            "order": config.youtube_search_order,
-            "maxResults": max_results,
-        },
+        params,
     )
     video_ids = [
         item.get("id", {}).get("videoId")
@@ -104,13 +141,80 @@ def search_videos(config: Config, keyword: str, max_results: int) -> list[dict[s
     if not video_ids:
         return []
 
-    videos_data = request_youtube(
+    return get_videos_meta(config, video_ids)
+
+
+def get_trending_videos(
+    config: Config,
+    region_code: str,
+    max_results: int,
+    video_category_id: str | None = None,
+) -> list[dict[str, Any]]:
+    params: dict[str, Any] = {
+        "part": config.youtube_video_parts,
+        "chart": "mostPopular",
+        "regionCode": region_code,
+        "maxResults": max_results,
+    }
+    if video_category_id:
+        params["videoCategoryId"] = video_category_id
+    data = request_youtube(config, "videos", params)
+    return data.get("items") or []
+
+
+def get_channel_uploads(config: Config, channel_id: str, max_results: int) -> list[dict[str, Any]]:
+    search_data = request_youtube(
         config,
-        "videos",
+        "search",
         {
-            "part": config.youtube_video_parts,
-            "id": ",".join(video_ids),
-            "maxResults": len(video_ids),
+            "part": config.youtube_search_part,
+            "channelId": channel_id,
+            "type": config.youtube_search_type,
+            "order": "date",
+            "maxResults": max_results,
         },
     )
-    return videos_data.get("items") or []
+    video_ids = [
+        item.get("id", {}).get("videoId")
+        for item in search_data.get("items", [])
+        if item.get("id", {}).get("videoId")
+    ]
+    return get_videos_meta(config, video_ids)
+
+
+def get_channel_id_by_handle(config: Config, handle: str) -> str:
+    handle = handle.strip()
+    if not handle:
+        raise ValueError("channel handle is empty")
+    if not handle.startswith("@"):
+        handle = f"@{handle}"
+    data = request_youtube(
+        config,
+        "channels",
+        {
+            "part": "id",
+            "forHandle": handle,
+            "maxResults": 1,
+        },
+    )
+    items = data.get("items") or []
+    if not items:
+        raise RuntimeError(f"Channel not found for handle: {handle}")
+    channel_id = str(items[0].get("id") or "").strip()
+    if not channel_id:
+        raise RuntimeError(f"Channel id missing for handle: {handle}")
+    return channel_id
+
+
+def parse_youtube_duration_seconds(value: str) -> int | None:
+    match = re.fullmatch(
+        r"P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?",
+        value or "",
+    )
+    if not match:
+        return None
+    days = int(match.group("days") or 0)
+    hours = int(match.group("hours") or 0)
+    minutes = int(match.group("minutes") or 0)
+    seconds = int(match.group("seconds") or 0)
+    return days * 86400 + hours * 3600 + minutes * 60 + seconds

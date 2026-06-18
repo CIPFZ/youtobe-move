@@ -367,48 +367,89 @@ youtube-pipeline/app/worker/
 ```text
 youtube-pipeline/app/discovery/
   __init__.py
+  models.py
   service.py
-  youtube_api.py
   filters.py
-  scoring.py
+  sources.py
 ```
 
 ### 任务拆解
 
 1. 搜索配置
-   - 关键词列表
-   - 分类策略
-   - 每次搜索数量
-   - 发布时间范围
+   - `DISCOVERY_SOURCES_JSON`
+   - 支持 `search`
+   - 支持 `trending`
+   - 支持 `channel_uploads`
+   - 每个 source 可单独设置 `max_results`
 
-2. YouTube API search
-   - 搜索候选
-   - 拉取 videos 详情
-   - 保存 discovery run
+2. YouTube API sources
+   - `search.list` 搜索关键词候选
+   - `videos.list(chart=mostPopular)` 获取地区热门
+   - `search.list(channelId, order=date)` 获取频道最新上传
+   - 统一补齐 `videos.list` 详情
 
 3. 过滤规则
    - video_id 去重
-   - 已发布跳过
-   - 已跳过跳过
    - 时长范围
    - 播放量范围
    - 标题黑名单
    - 频道黑名单/白名单
-   - 分类过滤
+   - 分类黑名单/白名单
 
 4. 过滤原因
-   - 每个候选保存过滤结果
+   - 每个 rejected candidate 写入 reason
    - 被选中写入 `videos(selected)`
-   - 被过滤写入 skipped 或 discovery candidate 记录
+   - 被选中创建 `download` job
+   - discovery 开始、结束、拒绝、选中均写 events
 
 5. CLI 接入
    - `youtube-pipeline discover`
-   - `youtube-pipeline discover --keyword "..."`
+   - `youtube-pipeline discover --source search|trending|channel_uploads`
+   - `youtube-pipeline discover --dry-run`
 
 ### 验收标准
 
 - discover 能产生候选。
 - 已处理 video_id 不重复入队。
+- dry-run 不写入视频和 job。
+- 非 dry-run 写入 selected 视频和 pending download job。
+- 单元测试覆盖 source 解析、过滤、dry-run、入库。
+
+### 当前状态
+
+已完成第一版：
+
+- 配置项：
+  - `DISCOVERY_SOURCES_JSON`
+  - `DISCOVERY_MAX_RESULTS_PER_SOURCE`
+  - `DISCOVERY_MIN_DURATION_SECONDS`
+  - `DISCOVERY_MAX_DURATION_SECONDS`
+  - `DISCOVERY_MIN_VIEW_COUNT`
+  - `DISCOVERY_TITLE_BLOCKLIST`
+  - `DISCOVERY_CHANNEL_ALLOWLIST`
+  - `DISCOVERY_CHANNEL_BLOCKLIST`
+  - `DISCOVERY_CATEGORY_ALLOWLIST`
+  - `DISCOVERY_CATEGORY_BLOCKLIST`
+- sources:
+  - `search`
+  - `trending`
+  - `channel_uploads`，支持 `channel_id` 和 `handle`
+- sorting:
+  - 候选统一计算 `score`
+  - score 基于 source 权重、播放量、时长区间
+  - accepted 候选按 score 降序输出和入库
+- CLI:
+  - `discover`
+  - `discover --dry-run`
+  - `discover --source ...`
+- 真实 YouTube API 验证：
+  - `discover --dry-run --source search` 成功返回候选。
+  - 临时 DB 下 `discover --source search` 成功入库并创建 download jobs。
+
+未完成：
+
+- 更细的评分策略。
+- 更丰富的 discovery run 统计表。
 - 过滤原因可查询。
 - selected 视频能被 worker 后续处理。
 
