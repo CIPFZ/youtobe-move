@@ -21,7 +21,7 @@ ALLOWED_VIDEO_TRANSITIONS = {
     "downloading": {"downloaded", "failed"},
     "downloaded": {"downloading", "describing", "ready_to_publish", "skipped", "failed"},
     "describing": {"ready_to_publish", "failed"},
-    "ready_to_publish": {"publishing", "skipped", "failed"},
+    "ready_to_publish": {"describing", "publishing", "skipped", "failed"},
     "publishing": {"published", "failed"},
     "published": set(),
     "failed": {"selected", "downloading", "describing", "ready_to_publish", "publishing", "skipped"},

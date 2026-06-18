@@ -13,6 +13,7 @@ from app.download_service import download_next, download_video_from_db
 from app.downloader import download_video_assets
 from app.logger import setup_logger
 from app.pipeline import run_download_publish
+from app.publish_service import describe_video, publish_next, publish_video
 from app.publisher import publish_to_bilibili
 from app.youtube_api import parse_video_id
 
@@ -52,10 +53,23 @@ def build_parser() -> argparse.ArgumentParser:
     events_parser.add_argument("video_id", nargs="?", help="Optional YouTube video id or URL")
     events_parser.add_argument("--limit", type=int, default=50, help="Maximum rows")
 
-    publish_parser = subparsers.add_parser("publish", help="Publish an existing downloaded video directory to Bilibili.")
-    publish_parser.add_argument("data_dir", type=Path, help="Directory containing meta.json and <id>_merge.mp4")
-    publish_parser.add_argument("--tid", type=int, help="Bilibili category id. Defaults to BILIBILI_TID.")
-    publish_parser.add_argument("--dry-run", action="store_true", help="Generate publish payload without uploading")
+    describe_parser = subparsers.add_parser("describe", help="Generate a Bilibili publish draft for one downloaded video.")
+    describe_parser.add_argument("video_id", help="YouTube video id or URL")
+    describe_parser.add_argument("--force", action="store_true", help="Regenerate the publish draft")
+
+    publish_parser = subparsers.add_parser("publish", help="Publish one ready video to Bilibili.")
+    publish_parser.add_argument("video_id", help="YouTube video id or URL")
+    publish_parser.add_argument("--dry-run", action="store_true", help="Build publish payload without uploading")
+    publish_parser.add_argument("--force", action="store_true", help="Allow publishing even if a published record exists")
+
+    publish_next_parser = subparsers.add_parser("publish-next", help="Publish the next ready video to Bilibili.")
+    publish_next_parser.add_argument("--dry-run", action="store_true", help="Build publish payload without uploading")
+    publish_next_parser.add_argument("--force", action="store_true", help="Allow publishing even if a published record exists")
+
+    publish_dir_parser = subparsers.add_parser("publish-dir", help="Publish an existing downloaded directory to Bilibili.")
+    publish_dir_parser.add_argument("data_dir", type=Path, help="Directory containing meta.json and <id>_merge.mp4")
+    publish_dir_parser.add_argument("--tid", type=int, help="Bilibili category id. Defaults to BILIBILI_TID.")
+    publish_dir_parser.add_argument("--dry-run", action="store_true", help="Generate publish payload without uploading")
 
     run_parser = subparsers.add_parser("run", help="Download, merge, generate description, and publish.")
     run_parser.add_argument("url", help="YouTube video URL")
@@ -96,12 +110,20 @@ def main() -> int:
                 video = repo.get_video(video_id)
                 media_files = repo.get_media_files(video_id)
                 latest_download_job = repo.get_latest_job(video_id, "download")
+                latest_describe_job = repo.get_latest_job(video_id, "describe")
+                latest_publish_job = repo.get_latest_job(video_id, "publish")
+                publish_draft = repo.get_publish_draft(video_id, "bilibili")
+                publish_records = repo.list_publish_records(video_id)
             if video is None:
                 raise RuntimeError(f"Video not found: {video_id}")
             result = {
                 "video": video,
                 "media_files": media_files,
                 "latest_download_job": latest_download_job,
+                "latest_describe_job": latest_describe_job,
+                "latest_publish_job": latest_publish_job,
+                "publish_draft": publish_draft,
+                "publish_records": publish_records,
             }
         elif args.command == "events":
             video_id = parse_video_id(args.video_id) if args.video_id else None
@@ -122,10 +144,29 @@ def main() -> int:
             logger.info("Direct download job started: url=%s", args.url)
             result = download_video_assets(args.url, config)
             logger.info("Direct download job completed: video_id=%s output_dir=%s", result["video_id"], result["output_dir"])
+        elif args.command == "describe":
+            video_id = parse_video_id(args.video_id)
+            logger.info("Describe job started: video_id=%s force=%s", video_id, args.force)
+            result = describe_video(video_id, config, force=args.force)
+            logger.info("Describe job completed: video_id=%s status=%s", video_id, result["status"])
         elif args.command == "publish":
-            logger.info("Publish job started: data_dir=%s", args.data_dir)
+            video_id = parse_video_id(args.video_id)
+            logger.info(
+                "Publish job started: video_id=%s dry_run=%s force=%s",
+                video_id,
+                args.dry_run,
+                args.force,
+            )
+            result = publish_video(video_id, config, dry_run=args.dry_run, force=args.force)
+            logger.info("Publish job completed: video_id=%s status=%s", video_id, result["status"])
+        elif args.command == "publish-next":
+            logger.info("Publish-next started: dry_run=%s force=%s", args.dry_run, args.force)
+            result = publish_next(config, dry_run=args.dry_run, force=args.force)
+            logger.info("Publish-next completed: status=%s", result["status"])
+        elif args.command == "publish-dir":
+            logger.info("Publish-dir job started: data_dir=%s", args.data_dir)
             result = publish_to_bilibili(args.data_dir, config, tid=args.tid, dry_run=args.dry_run)
-            logger.info("Publish job completed: video_file=%s", result["video_file"])
+            logger.info("Publish-dir job completed: video_file=%s", result["video_file"])
         elif args.command == "run":
             logger.info("Pipeline job started: url=%s", args.url)
             result = run_download_publish(args.url, config, tid=args.tid, dry_run_publish=args.dry_run_publish)

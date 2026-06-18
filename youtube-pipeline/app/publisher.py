@@ -102,6 +102,10 @@ def _load_social_upload_module(config: Config):
 
 def publish_to_bilibili(data_dir: Path, config: Config, tid: int | None = None, dry_run: bool = False) -> dict[str, Any]:
     payload = build_publish_payload(data_dir, config, tid)
+    return publish_payload_to_bilibili(payload, config, dry_run=dry_run)
+
+
+def publish_payload_to_bilibili(payload: dict[str, Any], config: Config, dry_run: bool = False) -> dict[str, Any]:
     payload["dry_run"] = dry_run
     if dry_run:
         return payload

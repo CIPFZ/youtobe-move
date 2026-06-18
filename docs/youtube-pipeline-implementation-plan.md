@@ -191,32 +191,29 @@ youtube-pipeline/app/download_service.py
 
 ### 范围
 
-新增或重构目录：
+新增：
 
 ```text
-youtube-pipeline/app/publisher/
-  __init__.py
-  service.py
-  ai_describe.py
-  tid_selector.py
-  bilibili.py
+youtube-pipeline/app/publish_service.py
 ```
+
+现阶段保留 `app/publisher.py` 和 `app/ai_describe.py`，只新增服务层把草稿生成、发布和 DB 状态接起来。
 
 ### 任务拆解
 
 1. 发布草稿生成
    - 状态 `downloaded -> describing`
    - LLM 生成标题、描述、标签
-   - LLM 原始输出保存
+   - 保存规范化后的 payload 和 tid 选择结果
    - 规范化结果写入 `publish_drafts`
    - 状态 `describing -> ready_to_publish`
+   - `ready_to_publish -> describing` 允许重新生成草稿
 
 2. tid 选择
    - 输入包含 yt-dlp meta
-   - 如有 YouTube API key，补充 YouTube API `categoryId/topicCategories`
    - LLM 从白名单选择 tid
-   - 非白名单 tid 失败
-   - 真实发布时 fail-closed，不静默默认 tid
+   - 非白名单 tid 真实发布失败
+   - `tid_source=fallback` 的草稿允许保存，但真实发布 fail-closed
 
 3. 重复发布保护
    - 检查 `publish_records`
@@ -236,6 +233,7 @@ youtube-pipeline/app/publisher/
    - `youtube-pipeline publish <video_id>`
    - `youtube-pipeline publish-next`
    - `youtube-pipeline publish <video_id> --force`
+   - `youtube-pipeline publish-dir <data_dir>` 保留为无 DB 的调试入口
 
 ### 验收标准
 
@@ -244,12 +242,25 @@ youtube-pipeline/app/publisher/
 - tid 选择结果保存 source/reason。
 - tid 选择失败时真实发布被阻止。
 - 已发布视频再次发布被阻止。
-- 单元测试覆盖非法 tid、重复发布、手动 tid 覆盖。
+- 单元测试覆盖草稿生成、dry-run 发布、真实发布成功、重复发布阻断、fallback tid 阻断。
 
 ### 风险点
 
-- LLM 输出不可控，需要保存 raw 和 normalized。
+- LLM 输出不可控；当前保存 normalized payload，后续如需要更强审计再让 `ai_describe` 暴露 raw output。
 - B 站返回错误需要原样保存。
+- 当前 MiniMax Anthropic 接口可能返回 500；这种情况下会生成 fallback 草稿，但真实发布会被阻断，避免错误分区自动发布。
+
+### 当前状态
+
+已完成服务层和 CLI：
+
+- `describe <video_id>`：读取 `media_files/meta.json`，生成草稿，写入 `publish_drafts`，状态到 `ready_to_publish`。
+- `publish <video_id> --dry-run`：从 DB 草稿和媒体路径构造发布 payload。
+- `publish <video_id>`：真实发布前检查重复发布、tid 白名单、fallback tid。
+- `publish-next`：发布下一条 `ready_to_publish` 视频。
+- `show <video_id>`：展示草稿、发布记录、describe/publish job。
+
+使用 `dRVkQsZFISU` 完成真实 `describe` 和 `publish --dry-run` 验证。由于 MiniMax 返回 500，本次生成 fallback 草稿；不带 `--dry-run` 的真实发布被正确阻断。
 
 ## P3：worker 自动循环
 

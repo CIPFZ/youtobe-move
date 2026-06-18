@@ -243,6 +243,13 @@ class Repository:
         self.create_event(video_id, None, "core", "publish_draft_saved", f"Publish draft saved: {platform}")
         self.conn.commit()
 
+    def get_publish_draft(self, video_id: str, platform: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM publish_drafts WHERE video_id=? AND platform=?",
+            (video_id, platform),
+        ).fetchone()
+        return row_to_dict(row)
+
     def save_publish_record(
         self,
         video_id: str,
@@ -264,6 +271,34 @@ class Repository:
         )
         self.create_event(video_id, None, "core", "publish_record_saved", f"Publish record saved: {platform}/{status}")
         self.conn.commit()
+
+    def has_successful_publish_record(self, video_id: str, platform: str, account: str) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT 1 FROM publish_records
+            WHERE video_id=? AND platform=? AND account=? AND status='published'
+            LIMIT 1
+            """,
+            (video_id, platform, account),
+        ).fetchone()
+        return row is not None
+
+    def list_publish_records(self, video_id: str, platform: str | None = None) -> list[dict[str, Any]]:
+        if platform:
+            rows = self.conn.execute(
+                """
+                SELECT * FROM publish_records
+                WHERE video_id=? AND platform=?
+                ORDER BY id DESC
+                """,
+                (video_id, platform),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM publish_records WHERE video_id=? ORDER BY id DESC",
+                (video_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def create_job(
         self,
@@ -313,15 +348,21 @@ class Repository:
                 (job_type, video_id),
             ).fetchone()
         else:
+            eligible_statuses = {
+                "download": ("selected", "failed"),
+                "describe": ("downloaded", "failed"),
+                "publish": ("ready_to_publish", "failed"),
+            }.get(job_type, ("failed",))
+            placeholders = ",".join("?" for _ in eligible_statuses)
             row = self.conn.execute(
-                """
+                f"""
                 SELECT jobs.* FROM jobs
                 JOIN videos ON videos.video_id = jobs.video_id
-                WHERE jobs.job_type=? AND jobs.status='pending' AND videos.status IN ('selected', 'failed')
+                WHERE jobs.job_type=? AND jobs.status='pending' AND videos.status IN ({placeholders})
                 ORDER BY jobs.id ASC
                 LIMIT 1
                 """,
-                (job_type,),
+                (job_type, *eligible_statuses),
             ).fetchone()
         return row_to_dict(row)
 
