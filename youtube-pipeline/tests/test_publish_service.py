@@ -8,7 +8,7 @@ from unittest.mock import patch
 from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
-from app.publish_service import describe_video, publish_next, publish_video, review_publish_draft
+from app.publish_service import describe_next, describe_video, publish_next, publish_video, review_publish_draft
 
 
 class PublishServiceTests(unittest.TestCase):
@@ -84,6 +84,16 @@ class PublishServiceTests(unittest.TestCase):
         self.assertEqual(draft["tid_source"], "llm")
         self.assertEqual(draft["status"], "pending")
         self.assertEqual(job["status"], "succeeded")
+
+    def test_describe_next_respects_deferred_retry_job(self):
+        video_id, _, _ = self._add_downloaded_video()
+        self.repo.create_job("describe", video_id=video_id, next_run_at="2999-01-01 00:00:00")
+
+        with patch("app.publish_service.build_publish_payload") as fake_build:
+            result = describe_next(self.config)
+
+        self.assertEqual(result["status"], "empty")
+        fake_build.assert_not_called()
 
     def test_publish_video_dry_run_uses_saved_draft(self):
         video_id, _, merged_path = self._add_downloaded_video()
@@ -166,6 +176,18 @@ class PublishServiceTests(unittest.TestCase):
             result = publish_next(self.config)
 
         self.assertEqual(result["status"], "published")
+
+    def test_publish_next_respects_deferred_retry_job(self):
+        video_id, _, _ = self._add_downloaded_video()
+        self._save_ready_draft(video_id)
+        self.repo.create_job("publish", video_id=video_id, next_run_at="2999-01-01 00:00:00")
+        self.config.publish_mode = "full_auto"
+
+        with patch("app.publish_service.publish_payload_to_bilibili") as fake_publish:
+            result = publish_next(self.config)
+
+        self.assertEqual(result["status"], "empty")
+        fake_publish.assert_not_called()
 
     def test_publish_next_respects_daily_limit(self):
         video_id, _, _ = self._add_downloaded_video()

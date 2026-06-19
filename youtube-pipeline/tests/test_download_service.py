@@ -15,7 +15,11 @@ class DownloadServiceTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.base_dir = Path(self.temp_dir.name)
         self.db_path = self.base_dir / "pipeline.db"
-        self.config = SimpleNamespace(db_path=self.db_path)
+        self.config = SimpleNamespace(
+            db_path=self.db_path,
+            job_retry_base_seconds=300,
+            job_retry_max_seconds=7200,
+        )
 
         self.conn = connect(self.db_path)
         init_schema(self.conn)
@@ -92,9 +96,27 @@ class DownloadServiceTests(unittest.TestCase):
 
         video = self.repo.get_video(video_id)
         job = self.repo.get_latest_job(video_id, "download")
-        self.assertEqual(video["status"], "failed")
+        self.assertEqual(video["status"], "selected")
         self.assertIn("network failed", video["last_error"])
+        self.assertEqual(job["status"], "pending")
+        self.assertEqual(job["error_type"], "network_error")
+        self.assertTrue(job["next_run_at"])
+
+    def test_download_video_from_db_marks_non_retryable_failure(self):
+        video_id = self._add_video()
+
+        with (
+            patch("app.download_service.download_video_assets", side_effect=RuntimeError("HTTP Error 403: Forbidden")),
+            patch("app.download_service.logger.exception"),
+        ):
+            with self.assertRaises(RuntimeError):
+                download_video_from_db(video_id, self.config)
+
+        video = self.repo.get_video(video_id)
+        job = self.repo.get_latest_job(video_id, "download")
+        self.assertEqual(video["status"], "failed")
         self.assertEqual(job["status"], "failed")
+        self.assertEqual(job["error_type"], "youtube_403")
 
     def test_download_next_uses_pending_job(self):
         first_id = self._add_video("first123456")
@@ -127,6 +149,16 @@ class DownloadServiceTests(unittest.TestCase):
         self.assertEqual(result["video_id"], second_id)
         self.assertEqual(self.repo.get_video(first_id)["status"], "selected")
         self.assertEqual(self.repo.get_video(second_id)["status"], "downloaded")
+
+    def test_download_next_respects_deferred_retry_job(self):
+        video_id = self._add_video()
+        self.repo.create_job("download", video_id=video_id, next_run_at="2999-01-01 00:00:00")
+
+        with patch("app.download_service.download_video_assets") as fake_download:
+            result = download_next(self.config)
+
+        self.assertEqual(result["status"], "empty")
+        fake_download.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -72,6 +72,23 @@ class CoreRepositoryTests(unittest.TestCase):
         self.assertEqual(running["attempts"], 1)
         self.assertIsNone(repo.get_pending_job("download", video_id="abc123def45"))
 
+    def test_pending_job_respects_next_run_at(self):
+        repo = self._repo()
+        repo.upsert_video("abc123def45", "https://www.youtube.com/watch?v=abc123def45")
+        future_job_id = repo.create_job(
+            "download",
+            video_id="abc123def45",
+            next_run_at="2999-01-01 00:00:00",
+        )
+
+        self.assertIsNone(repo.get_pending_job("download"))
+        self.assertIsNone(repo.get_pending_job("download", video_id="abc123def45"))
+        self.assertEqual(repo.get_pending_job("download", video_id="abc123def45", include_future=True)["id"], future_job_id)
+
+        repo.update_job_status(future_job_id, "pending", next_run_at="2000-01-01 00:00:00")
+        pending = repo.get_pending_job("download")
+        self.assertEqual(pending["id"], future_job_id)
+
 
 if __name__ == "__main__":
     unittest.main()

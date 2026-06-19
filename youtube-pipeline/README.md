@@ -61,6 +61,8 @@ full_auto      # 自动发布有效的非 fallback 草稿
 
 所有自动发布模式都会受每日上限、发布时间窗口、最小发布间隔限制。
 
+失败处理由 job 状态接管。网络、LLM、发布平台临时错误会按指数退避延迟重试；YouTube 403、视频不可用、需要登录、fallback tid、合并失败等会直接进入 `failed`，避免反复占用队列。重试间隔由 `.env` 中的 `JOB_RETRY_BASE_SECONDS` 和 `JOB_RETRY_MAX_SECONDS` 控制。
+
 下载并合并：
 
 ```bash

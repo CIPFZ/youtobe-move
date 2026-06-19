@@ -9,6 +9,7 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.downloader import download_video_assets
+from app.job_retry import handle_job_failure
 
 
 logger = logging.getLogger("youtube-pipeline")
@@ -110,19 +111,16 @@ def download_video_from_db(video_id: str, config: Config, force: bool = False) -
         except Exception as exc:
             error = str(exc)
             logger.exception("Download failed: video_id=%s job_id=%s", video_id, job_id)
-            repo.create_event(video_id, job_id, "downloader", "download_failed", error, {"error": error})
-            try:
-                repo.update_video_status(video_id, "failed", "Download failed", error=error)
-            except ValueError:
-                repo.conn.execute(
-                    """
-                    UPDATE videos
-                    SET status='failed', last_error=?, updated_at=CURRENT_TIMESTAMP
-                    WHERE video_id=?
-                    """,
-                    (error, video_id),
-                )
-            repo.update_job_status(job_id, "failed", error=error)
+            handle_job_failure(
+                repo,
+                job_id=job_id,
+                job_type="download",
+                video_id=video_id,
+                error=error,
+                config=config,
+                module="downloader",
+                failed_message="Download failed",
+            )
             conn.commit()
             raise
 
@@ -135,9 +133,17 @@ def download_next(config: Config, force: bool = False) -> dict[str, Any]:
         if job:
             video_id = str(job["video_id"])
         else:
-            selected = repo.list_videos(status="selected", limit=1)
-            if not selected:
+            selected = repo.list_videos(status="selected", limit=50)
+            runnable_video = next(
+                (
+                    video
+                    for video in selected
+                    if not repo.get_pending_job("download", video_id=str(video["video_id"]), include_future=True)
+                ),
+                None,
+            )
+            if not runnable_video:
                 return {"status": "empty", "message": "No selected videos waiting for download"}
-            video_id = str(selected[0]["video_id"])
+            video_id = str(runnable_video["video_id"])
 
     return download_video_from_db(video_id, config, force=force)

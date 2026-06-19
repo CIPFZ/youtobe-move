@@ -20,6 +20,7 @@ P3 worker 自动循环
 P4 discovery 自动发现
 P5 web API
 P6 web 前端
+P7 失败分类、延迟重试和队列自愈
 ```
 
 ## P0：core 数据库和状态机
@@ -362,7 +363,6 @@ youtube-pipeline/app/worker/
 未完成：
 
 - 多 worker lock/lease。
-- 失败延迟重试。
 
 ## P4：discovery 自动发现
 
@@ -612,12 +612,75 @@ POST /api/videos/<video_id>/skip
 未完成：
 
 - 草稿内容编辑。
-- 更细的失败分类和延迟重试。
 - 发布日历/时间计划。
 
 ### 验收标准
 
 - 用户可以不使用 CLI 完成查看、编辑、发布、重试、跳过。
+
+## P7：失败分类、延迟重试和队列自愈
+
+### 目标
+
+让 worker 遇到临时失败时不会把队列卡死；同时把不可恢复失败明确标记，便于 Web 和 CLI 判断下一步操作。
+
+### 任务拆解
+
+1. 失败分类
+   - `youtube_403`：不可重试
+   - `youtube_unavailable`：不可重试
+   - `login_required`：不可重试
+   - `fallback_tid`：不可重试
+   - `merge_failed`：不可重试
+   - `publish_failed`：可重试
+   - `llm_failed`：可重试
+   - `network_error`：可重试
+   - `download_incomplete`：可重试
+   - `unknown`：不可重试
+
+2. 延迟重试
+   - `jobs.next_run_at` 保存下一次可执行时间。
+   - `jobs.error_type` 保存结构化错误类型。
+   - `get_pending_job` 自动跳过未来才可执行的 job。
+   - 重试间隔使用指数退避，受 `JOB_RETRY_BASE_SECONDS` 和 `JOB_RETRY_MAX_SECONDS` 控制。
+
+3. 队列自愈
+   - download 可重试失败：视频状态回到 `selected`，job 保持 `pending`。
+   - describe 可重试失败：视频状态回到 `downloaded`，job 保持 `pending`。
+   - publish 可重试失败：视频状态回到 `ready_to_publish`，job 保持 `pending`。
+   - 不可重试失败：视频和 job 均进入 `failed`。
+
+4. Web 展示
+   - 视频详情展示最近 job。
+   - 展示 `attempts/max_attempts`。
+   - 展示 `error_type`。
+   - 展示 `next_run_at`。
+
+### 当前状态
+
+已完成：
+
+- 新增 `app/error_policy.py`，集中维护错误分类。
+- 新增 `app/job_retry.py`，集中处理失败后的状态回退、延迟重试和终态失败。
+- `download_service`、`publish_service` 的 download/describe/publish 失败路径已接入统一处理。
+- `jobs` 表已补充 `next_run_at` 和 `error_type`，旧数据库由 `init_schema()` 自动补列。
+- `.env.example` 已新增 `JOB_RETRY_BASE_SECONDS` 和 `JOB_RETRY_MAX_SECONDS`。
+- Web 详情已展示 job 错误类型、尝试次数和下次运行时间。
+- 真实数据库已完成 schema 迁移验证。
+- 单元测试覆盖 future `next_run_at` 跳过、可重试失败、不可重试 403 失败。
+
+未完成：
+
+- Web 上按 `error_type` 过滤失败项。
+- 更细的 YouTube 限流、版权、地区限制分类。
+- 多 worker lock/lease。
+
+### 验收标准
+
+- 网络类下载失败不会进入永久 failed，而是按退避时间重新排队。
+- YouTube 403 类错误直接进入 failed，不自动反复重试。
+- `status` 和 Web 能看到错误类型和下一次执行时间。
+- worker 后续轮次不会执行 `next_run_at` 未到的 pending job。
 - 页面不隐藏错误。
 - 发布前能看到 title/description/tags/tid。
 

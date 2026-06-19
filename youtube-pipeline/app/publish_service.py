@@ -11,6 +11,7 @@ from app.config import Config
 from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
+from app.job_retry import handle_job_failure
 from app.publisher import build_publish_payload, publish_payload_to_bilibili
 
 
@@ -219,9 +220,16 @@ def describe_video(video_id: str, config: Config, force: bool = False) -> dict[s
         except Exception as exc:
             error = str(exc)
             logger.exception("Description generation failed: video_id=%s job_id=%s", video_id, job_id)
-            repo.create_event(video_id, job_id, "publisher", "describe_failed", error, {"error": error})
-            repo.update_video_status(video_id, "failed", "Description generation failed", error=error)
-            repo.update_job_status(job_id, "failed", error=error)
+            handle_job_failure(
+                repo,
+                job_id=job_id,
+                job_type="describe",
+                video_id=video_id,
+                error=error,
+                config=config,
+                module="describer",
+                failed_message="Description generation failed",
+            )
             conn.commit()
             raise
 
@@ -271,19 +279,16 @@ def publish_video(video_id: str, config: Config, dry_run: bool = False, force: b
         except Exception as exc:
             error = str(exc)
             logger.exception("Publish failed: video_id=%s job_id=%s", video_id, job_id)
-            repo.create_event(video_id, job_id, "publisher", "publish_failed", error, {"error": error})
-            try:
-                repo.update_video_status(video_id, "failed", "Publish failed", error=error)
-            except ValueError:
-                repo.conn.execute(
-                    """
-                    UPDATE videos
-                    SET status='failed', last_error=?, updated_at=CURRENT_TIMESTAMP
-                    WHERE video_id=?
-                    """,
-                    (error, video_id),
-                )
-            repo.update_job_status(job_id, "failed", error=error)
+            handle_job_failure(
+                repo,
+                job_id=job_id,
+                job_type="publish",
+                video_id=video_id,
+                error=error,
+                config=config,
+                module="publisher",
+                failed_message="Publish failed",
+            )
             conn.commit()
             raise
 
@@ -341,9 +346,17 @@ def describe_next(config: Config, force: bool = False) -> dict[str, Any]:
         if job:
             video_id = str(job["video_id"])
         else:
-            downloaded = repo.list_videos(status="downloaded", limit=1)
-            if not downloaded:
+            downloaded = repo.list_videos(status="downloaded", limit=50)
+            runnable_video = next(
+                (
+                    video
+                    for video in downloaded
+                    if not repo.get_pending_job("describe", video_id=str(video["video_id"]), include_future=True)
+                ),
+                None,
+            )
+            if not runnable_video:
                 return {"status": "empty", "message": "No downloaded videos waiting for describe"}
-            video_id = str(downloaded[0]["video_id"])
+            video_id = str(runnable_video["video_id"])
 
     return describe_video(video_id, config, force=force)

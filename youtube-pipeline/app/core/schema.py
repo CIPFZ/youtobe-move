@@ -86,6 +86,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     lock_owner TEXT NOT NULL DEFAULT '',
     started_at TEXT,
     finished_at TEXT,
+    next_run_at TEXT,
+    error_type TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT '',
     payload_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -124,4 +126,12 @@ def init_schema(conn: sqlite3.Connection) -> None:
     if "review_note" not in columns:
         conn.execute("ALTER TABLE publish_drafts ADD COLUMN review_note TEXT NOT NULL DEFAULT ''")
     conn.execute("UPDATE publish_drafts SET status='pending' WHERE status IN ('ready', 'draft')")
+    job_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(jobs)").fetchall()
+    }
+    if "next_run_at" not in job_columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN next_run_at TEXT")
+    if "error_type" not in job_columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN error_type TEXT NOT NULL DEFAULT ''")
     conn.commit()

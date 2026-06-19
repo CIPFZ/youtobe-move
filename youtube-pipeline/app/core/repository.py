@@ -354,6 +354,14 @@ class Repository:
               AND publish_drafts.tid_source!='fallback'
               {review_filter}
               AND NOT EXISTS (
+                  SELECT 1 FROM jobs
+                  WHERE jobs.video_id = videos.video_id
+                    AND jobs.job_type = 'publish'
+                    AND jobs.status = 'pending'
+                    AND jobs.next_run_at IS NOT NULL
+                    AND datetime(jobs.next_run_at) > datetime('now')
+              )
+              AND NOT EXISTS (
                   SELECT 1 FROM publish_records
                   WHERE publish_records.video_id = videos.video_id
                     AND publish_records.platform = ?
@@ -447,13 +455,14 @@ class Repository:
         status: str = "pending",
         payload: dict[str, Any] | None = None,
         max_attempts: int = 3,
+        next_run_at: str | None = None,
     ) -> int:
         self.conn.execute(
             """
-            INSERT INTO jobs (video_id, job_type, status, max_attempts, payload_json)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO jobs (video_id, job_type, status, max_attempts, next_run_at, payload_json)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (video_id, job_type, status, max_attempts, json.dumps(payload or {}, ensure_ascii=False)),
+            (video_id, job_type, status, max_attempts, next_run_at, json.dumps(payload or {}, ensure_ascii=False)),
         )
         job_id = int(self.conn.execute("SELECT last_insert_rowid()").fetchone()[0])
         self.create_event(video_id, job_id, "core", "job_created", f"Job created: {job_type}")
@@ -499,12 +508,19 @@ class Repository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def get_pending_job(self, job_type: str, video_id: str | None = None) -> dict[str, Any] | None:
+    def get_pending_job(
+        self,
+        job_type: str,
+        video_id: str | None = None,
+        include_future: bool = False,
+    ) -> dict[str, Any] | None:
+        next_run_filter = "" if include_future else "AND (next_run_at IS NULL OR datetime(next_run_at) <= datetime('now'))"
         if video_id:
             row = self.conn.execute(
-                """
+                f"""
                 SELECT * FROM jobs
                 WHERE job_type=? AND status='pending' AND video_id=?
+                  {next_run_filter}
                 ORDER BY id ASC
                 LIMIT 1
                 """,
@@ -522,6 +538,7 @@ class Repository:
                 SELECT jobs.* FROM jobs
                 JOIN videos ON videos.video_id = jobs.video_id
                 WHERE jobs.job_type=? AND jobs.status='pending' AND videos.status IN ({placeholders})
+                  {next_run_filter.replace("next_run_at", "jobs.next_run_at")}
                 ORDER BY jobs.id ASC
                 LIMIT 1
                 """,
@@ -529,7 +546,14 @@ class Repository:
             ).fetchone()
         return row_to_dict(row)
 
-    def update_job_status(self, job_id: int, status: str, error: str = "") -> dict[str, Any]:
+    def update_job_status(
+        self,
+        job_id: int,
+        status: str,
+        error: str = "",
+        error_type: str = "",
+        next_run_at: str | None = None,
+    ) -> dict[str, Any]:
         if status not in JOB_STATUSES:
             raise ValueError(f"Unknown job status: {status}")
         job = self.get_job(job_id)
@@ -541,24 +565,24 @@ class Repository:
                 """
                 UPDATE jobs
                 SET status=?, attempts=attempts + 1, started_at=COALESCE(started_at, CURRENT_TIMESTAMP),
-                    error=?, updated_at=CURRENT_TIMESTAMP
+                    error=?, error_type=?, next_run_at=NULL, updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
                 """,
-                (status, error, job_id),
+                (status, error, error_type, job_id),
             )
         elif status in {"succeeded", "failed", "cancelled"}:
             self.conn.execute(
                 """
                 UPDATE jobs
-                SET status=?, finished_at=CURRENT_TIMESTAMP, error=?, updated_at=CURRENT_TIMESTAMP
+                SET status=?, finished_at=CURRENT_TIMESTAMP, error=?, error_type=?, next_run_at=?, updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
                 """,
-                (status, error, job_id),
+                (status, error, error_type, next_run_at, job_id),
             )
         else:
             self.conn.execute(
-                "UPDATE jobs SET status=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (status, error, job_id),
+                "UPDATE jobs SET status=?, error=?, error_type=?, next_run_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (status, error, error_type, next_run_at, job_id),
             )
 
         self.create_event(
@@ -567,12 +591,38 @@ class Repository:
             "core",
             "job_status_changed",
             f"Job status changed: {job['status']} -> {status}",
-            {"from": job["status"], "to": status, "error": error},
+            {"from": job["status"], "to": status, "error": error, "error_type": error_type, "next_run_at": next_run_at},
         )
         self.conn.commit()
         result = self.get_job(job_id)
         if result is None:
             raise RuntimeError(f"Job status update failed: {job_id}")
+        return result
+
+    def schedule_job_retry(self, job_id: int, error: str, error_type: str, next_run_at: str) -> dict[str, Any]:
+        job = self.get_job(job_id)
+        if not job:
+            raise KeyError(f"Job not found: {job_id}")
+        self.conn.execute(
+            """
+            UPDATE jobs
+            SET status='pending', error=?, error_type=?, next_run_at=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+            """,
+            (error, error_type, next_run_at, job_id),
+        )
+        self.create_event(
+            job["video_id"],
+            job_id,
+            "core",
+            "job_retry_scheduled",
+            f"Job retry scheduled: {error_type}",
+            {"error": error, "error_type": error_type, "next_run_at": next_run_at},
+        )
+        self.conn.commit()
+        result = self.get_job(job_id)
+        if result is None:
+            raise RuntimeError(f"Job retry schedule failed: {job_id}")
         return result
 
     def create_event(

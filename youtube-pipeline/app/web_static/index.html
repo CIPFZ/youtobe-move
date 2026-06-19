@@ -528,6 +528,11 @@
         const draft = data.publish_draft || {};
         const records = data.publish_records || [];
         const events = data.events || [];
+        const jobs = [
+          ["download", data.latest_download_job],
+          ["describe", data.latest_describe_job],
+          ["publish", data.latest_publish_job],
+        ].filter((entry) => entry[1]);
         const canPublish = video.status === "ready_to_publish" && draft.tid_source !== "fallback" && draft.status !== "rejected";
         const canReview = video.status === "ready_to_publish" && Boolean(draft.title);
         const canDescribe = ["downloaded", "ready_to_publish", "failed"].includes(video.status);
@@ -579,6 +584,23 @@
                       .join("")}</div>
                   `
                     : '<div class="muted">暂无草稿。</div>'
+                }
+              </div>
+
+              <div class="section">
+                <h2>任务状态</h2>
+                ${
+                  jobs.length
+                    ? jobs
+                        .map(([name, job]) => {
+                          const attempts = `${job.attempts || 0}/${job.max_attempts || 0}`;
+                          const detail = [job.error_type, job.next_run_at ? `next ${job.next_run_at}` : "", job.error]
+                            .filter(Boolean)
+                            .join(" · ");
+                          return `<div class="event"><b>${name}</b> · <span class="badge ${job.status}">${escapeHtml(job.status)}</span> · ${attempts}<div class="muted">${escapeHtml(detail || "-")}</div></div>`;
+                        })
+                        .join("")
+                    : '<div class="muted">暂无任务记录。</div>'
                 }
               </div>
 
