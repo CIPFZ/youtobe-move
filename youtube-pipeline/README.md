@@ -35,34 +35,51 @@ MINIMAX_ANTHROPIC_API_KEY=...
 
 ## 命令
 
+启动本地管理台：
+
+```bash
+youtube-pipeline web
+```
+
+默认地址为 `http://127.0.0.1:8505`，可通过 `.env` 中的 `WEB_HOST`、`WEB_PORT` 修改。
+
+运行一轮自动队列：
+
+```bash
+youtube-pipeline worker-run
+```
+
+worker 默认会按低水位补充 discovery，并推进 download/describe。真实发布默认关闭。
+
 下载并合并：
 
 ```bash
-youtube-pipeline download "https://www.youtube.com/watch?v=ppMXtTbNnCs"
+youtube-pipeline add-url "https://www.youtube.com/watch?v=ppMXtTbNnCs"
+youtube-pipeline download-next
 ```
 
-对已有下载目录生成发布参数，不上传：
+对已下载视频生成发布草稿：
 
 ```bash
-youtube-pipeline publish runtime/downloads/ppMXtTbNnCs --tid 27 --dry-run
+youtube-pipeline describe ppMXtTbNnCs
 ```
 
-对已有下载目录发布到 B 站：
+发布预览，不上传：
 
 ```bash
-youtube-pipeline publish runtime/downloads/ppMXtTbNnCs --tid 27
+youtube-pipeline publish ppMXtTbNnCs --dry-run
 ```
 
-完整链路：
+真实发布到 B 站：
 
 ```bash
-youtube-pipeline run "https://www.youtube.com/watch?v=ppMXtTbNnCs" --tid 27
+youtube-pipeline publish ppMXtTbNnCs
 ```
 
-只下载并生成发布参数，不上传：
+旧的单 URL 直通链路仍保留用于临时验证：
 
 ```bash
-youtube-pipeline run "https://www.youtube.com/watch?v=ppMXtTbNnCs" --tid 27 --dry-run-publish
+youtube-pipeline run "https://www.youtube.com/watch?v=ppMXtTbNnCs" --dry-run-publish
 ```
 
 ## 输出结构

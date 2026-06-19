@@ -17,6 +17,7 @@ from app.operations import pipeline_status, retry_video, skip_video
 from app.pipeline import run_download_publish
 from app.publish_service import describe_video, publish_next, publish_video
 from app.publisher import publish_to_bilibili
+from app.web import run_web_server
 from app.worker import run_worker_loop, run_worker_once
 from app.youtube_api import parse_video_id
 
@@ -103,6 +104,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Allow worker to execute publish jobs",
     )
     worker_parser.add_argument("--publish-dry-run", action="store_true", help="Use dry-run for publish jobs")
+
+    web_parser = subparsers.add_parser("web", help="Run the local Web management UI.")
+    web_parser.add_argument("--host", help="Bind host. Defaults to WEB_HOST.")
+    web_parser.add_argument("--port", type=int, help="Bind port. Defaults to WEB_PORT.")
 
     publish_dir_parser = subparsers.add_parser("publish-dir", help="Publish an existing downloaded directory to Bilibili.")
     publish_dir_parser.add_argument("data_dir", type=Path, help="Directory containing meta.json and <id>_merge.mp4")
@@ -231,6 +236,9 @@ def main() -> int:
                 max_runs=1 if args.once else None,
             )
             logger.info("Worker loop stopped: status=%s", result["status"])
+        elif args.command == "web":
+            run_web_server(config, host=args.host, port=args.port)
+            return 0
         elif args.command == "publish-dir":
             logger.info("Publish-dir job started: data_dir=%s", args.data_dir)
             result = publish_to_bilibili(args.data_dir, config, tid=args.tid, dry_run=args.dry_run)

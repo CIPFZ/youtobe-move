@@ -91,6 +91,16 @@ class Repository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def count_active_queue(self) -> int:
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM videos
+            WHERE status IN ('selected', 'downloading', 'downloaded', 'describing', 'ready_to_publish', 'publishing')
+            """
+        ).fetchone()
+        return int(row["count"])
+
     def update_video_basic_info(
         self,
         video_id: str,

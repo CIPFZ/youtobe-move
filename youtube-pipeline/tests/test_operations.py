@@ -28,6 +28,7 @@ class OperationsTests(unittest.TestCase):
 
         self.assertEqual(status["videos_by_status"][0]["status"], "selected")
         self.assertEqual(status["videos_by_status"][0]["count"], 1)
+        self.assertEqual(status["active_queue_count"], 1)
         self.assertEqual(status["jobs_by_type_status"][0]["job_type"], "download")
         self.assertTrue(status["recent_events"])
 

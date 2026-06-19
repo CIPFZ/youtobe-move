@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>YouTube Pipeline</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --panel-alt: #eef3f8;
+        --line: #d9e0e7;
+        --text: #1e252c;
+        --muted: #64717f;
+        --accent: #0f766e;
+        --accent-strong: #0b5f59;
+        --danger: #b42318;
+        --warning: #9a6700;
+        --ok: #157347;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 14px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 64px;
+        padding: 0 24px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      button,
+      select {
+        height: 34px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+        color: var(--text);
+        font: inherit;
+      }
+
+      button {
+        padding: 0 12px;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+
+      button.primary:hover {
+        background: var(--accent-strong);
+      }
+
+      button.danger {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      select {
+        padding: 0 10px;
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: minmax(360px, 0.9fr) minmax(520px, 1.2fr);
+        gap: 16px;
+        padding: 16px;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .panel {
+        min-width: 0;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .panel-body {
+        padding: 16px;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel-alt);
+      }
+
+      .stat {
+        min-height: 58px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #fff;
+      }
+
+      .stat b {
+        display: block;
+        font-size: 18px;
+      }
+
+      .muted,
+      .stat span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .video-list {
+        max-height: calc(100vh - 190px);
+        overflow: auto;
+      }
+
+      .video-row {
+        display: grid;
+        grid-template-columns: 88px minmax(0, 1fr);
+        align-items: start;
+        gap: 12px;
+        width: 100%;
+        height: auto;
+        min-height: 78px;
+        padding: 12px 16px;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        border-radius: 0;
+        text-align: left;
+        background: #fff;
+      }
+
+      .video-row:hover,
+      .video-row.active {
+        background: #eef8f6;
+      }
+
+      .thumb {
+        width: 88px;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #e9edf2;
+      }
+
+      .title {
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        font-weight: 650;
+        line-height: 1.35;
+        min-height: 38px;
+      }
+
+      .meta-line {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .badges {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 2px 7px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .badge.ready_to_publish,
+      .badge.published {
+        color: var(--ok);
+        border-color: #b7dfc9;
+      }
+
+      .badge.failed {
+        color: var(--danger);
+        border-color: #f3b7b2;
+      }
+
+      .badge.publishing,
+      .badge.downloading,
+      .badge.describing {
+        color: var(--warning);
+        border-color: #f0d28a;
+      }
+
+      .detail-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 220px;
+        gap: 16px;
+      }
+
+      .poster {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: #e9edf2;
+      }
+
+      .section {
+        padding: 14px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .section:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: 88px minmax(0, 1fr);
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .kv div:nth-child(odd) {
+        color: var(--muted);
+      }
+
+      .description {
+        white-space: pre-wrap;
+        line-height: 1.7;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+
+      .events {
+        max-height: 240px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+      }
+
+      .event {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .event:last-child {
+        border-bottom: 0;
+      }
+
+      .toast {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        max-width: min(520px, calc(100vw - 36px));
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 12px 36px rgba(16, 24, 40, 0.16);
+        display: none;
+        white-space: pre-wrap;
+      }
+
+      .toast.show {
+        display: block;
+      }
+
+      @media (max-width: 980px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+
+        .video-list {
+          max-height: 460px;
+        }
+
+        .detail-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 620px) {
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+          padding: 14px 16px;
+        }
+
+        main {
+          padding: 10px;
+        }
+
+        .stats {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>YouTube Pipeline</h1>
+        <div class="muted">发现、下载、文案、发布队列</div>
+      </div>
+      <div class="toolbar">
+        <button id="workerRun">运行一轮</button>
+        <button id="discoverDryRun">发现预览</button>
+        <button id="refresh" class="primary">刷新</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <div class="panel-head">
+          <h2>队列</h2>
+          <div class="toolbar">
+            <select id="statusFilter">
+              <option value="">全部</option>
+              <option value="selected">selected</option>
+              <option value="downloaded">downloaded</option>
+              <option value="ready_to_publish">ready_to_publish</option>
+              <option value="published">published</option>
+              <option value="failed">failed</option>
+              <option value="skipped">skipped</option>
+            </select>
+          </div>
+        </div>
+        <div id="stats" class="stats"></div>
+        <div id="videoList" class="video-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>详情</h2>
+          <div id="selectedId" class="muted">未选择</div>
+        </div>
+        <div id="detail" class="panel-body">
+          <div class="muted">请选择一个视频。</div>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+      const state = {
+        status: "",
+        videos: [],
+        selectedId: "",
+      };
+
+      const $ = (id) => document.getElementById(id);
+
+      function showToast(message) {
+        const toast = $("toast");
+        toast.textContent = message;
+        toast.classList.add("show");
+        window.clearTimeout(showToast.timer);
+        showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 5200);
+      }
+
+      async function api(path, options = {}) {
+        const response = await fetch(path, {
+          headers: { "Content-Type": "application/json" },
+          ...options,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        return payload;
+      }
+
+      function fmtDuration(seconds) {
+        if (!seconds) return "-";
+        const min = Math.floor(seconds / 60);
+        const sec = String(seconds % 60).padStart(2, "0");
+        return `${min}:${sec}`;
+      }
+
+      function fmtCount(value) {
+        if (value === null || value === undefined || value === "") return "-";
+        return Number(value).toLocaleString("zh-CN");
+      }
+
+      function statusMap(statusRows) {
+        const map = {};
+        for (const row of statusRows || []) map[row.status] = row.count;
+        return map;
+      }
+
+      function renderStats(status) {
+        const counts = statusMap(status.videos_by_status);
+        $("stats").innerHTML = [
+          ["active", status.active_queue_count || 0],
+          ["ready", counts.ready_to_publish || 0],
+          ["published", counts.published || 0],
+          ["failed", counts.failed || 0],
+        ]
+          .map(([label, value]) => `<div class="stat"><span>${label}</span><b>${value}</b></div>`)
+          .join("");
+      }
+
+      function posterUrl(item) {
+        const id = item.video.video_id;
+        return `/api/videos/${encodeURIComponent(id)}/file?type=poster`;
+      }
+
+      function renderList() {
+        const list = $("videoList");
+        if (!state.videos.length) {
+          list.innerHTML = '<div class="panel-body muted">暂无数据。</div>';
+          return;
+        }
+        list.innerHTML = state.videos
+          .map((item) => {
+            const video = item.video;
+            const draft = item.publish_draft || {};
+            const active = video.video_id === state.selectedId ? " active" : "";
+            const title = draft.title || video.title || video.video_id;
+            return `
+              <button class="video-row${active}" data-id="${video.video_id}">
+                <img class="thumb" src="${posterUrl(item)}" alt="" onerror="this.style.visibility='hidden'" />
+                <div>
+                  <div class="title">${escapeHtml(title)}</div>
+                  <div class="meta-line">${escapeHtml(video.channel || "-")} · ${fmtDuration(video.duration)} · ${fmtCount(video.view_count)} views</div>
+                  <div class="badges">
+                    <span class="badge ${video.status}">${video.status}</span>
+                    ${draft.tid ? `<span class="badge">tid ${draft.tid}</span>` : ""}
+                    ${draft.tid_source ? `<span class="badge">${escapeHtml(draft.tid_source)}</span>` : ""}
+                  </div>
+                </div>
+              </button>
+            `;
+          })
+          .join("");
+        for (const row of list.querySelectorAll(".video-row")) {
+          row.addEventListener("click", () => selectVideo(row.dataset.id));
+        }
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      async function selectVideo(videoId) {
+        state.selectedId = videoId;
+        $("selectedId").textContent = videoId;
+        renderList();
+        const detail = await api(`/api/videos/${encodeURIComponent(videoId)}`);
+        renderDetail(detail);
+      }
+
+      function renderDetail(data) {
+        const video = data.video;
+        const draft = data.publish_draft || {};
+        const records = data.publish_records || [];
+        const events = data.events || [];
+        const canPublish = video.status === "ready_to_publish" && draft.tid_source !== "fallback";
+        const canDescribe = ["downloaded", "ready_to_publish", "failed"].includes(video.status);
+        const canDownload = ["selected", "failed"].includes(video.status);
+        const canRetry = video.status === "failed";
+        const canSkip = !["published", "skipped"].includes(video.status);
+
+        $("detail").innerHTML = `
+          <div class="detail-grid">
+            <div>
+              <div class="section">
+                <h2>${escapeHtml(video.title || video.video_id)}</h2>
+                <div class="kv">
+                  <div>状态</div><div><span class="badge ${video.status}">${video.status}</span></div>
+                  <div>频道</div><div>${escapeHtml(video.channel || "-")}</div>
+                  <div>时长</div><div>${fmtDuration(video.duration)}</div>
+                  <div>播放</div><div>${fmtCount(video.view_count)}</div>
+                  <div>分类</div><div>${escapeHtml(video.category || "-")}</div>
+                  <div>原链接</div><div><a href="${escapeHtml(video.source_url)}" target="_blank" rel="noreferrer">${escapeHtml(video.source_url)}</a></div>
+                </div>
+                ${video.last_error ? `<p class="badge failed">${escapeHtml(video.last_error)}</p>` : ""}
+                <div class="actions">
+                  <button ${canDownload ? "" : "disabled"} data-action="download">下载</button>
+                  <button ${canDescribe ? "" : "disabled"} data-action="describe">生成文案</button>
+                  <button ${canPublish ? "" : "disabled"} data-action="publish-dry-run">发布预览</button>
+                  <button class="primary" ${canPublish ? "" : "disabled"} data-action="publish">真实发布</button>
+                  <button ${canRetry ? "" : "disabled"} data-action="retry">重试</button>
+                  <button class="danger" ${canSkip ? "" : "disabled"} data-action="skip">跳过</button>
+                </div>
+              </div>
+
+              <div class="section">
+                <h2>发布草稿</h2>
+                ${
+                  draft.title
+                    ? `
+                    <div class="kv">
+                      <div>标题</div><div>${escapeHtml(draft.title)}</div>
+                      <div>分区</div><div>${escapeHtml(draft.tid || "-")} ${escapeHtml(draft.tid_label || "")}</div>
+                      <div>来源</div><div>${escapeHtml(draft.tid_source || "-")}</div>
+                      <div>原因</div><div>${escapeHtml(draft.tid_reason || "-")}</div>
+                    </div>
+                    <p class="description">${escapeHtml(draft.description || "")}</p>
+                    <div class="badges">${JSON.parse(draft.tags_json || "[]")
+                      .map((tag) => `<span class="badge">${escapeHtml(tag)}</span>`)
+                      .join("")}</div>
+                  `
+                    : '<div class="muted">暂无草稿。</div>'
+                }
+              </div>
+
+              <div class="section">
+                <h2>发布记录</h2>
+                ${
+                  records.length
+                    ? records
+                        .map(
+                          (record) =>
+                            `<div class="event">${escapeHtml(record.platform)} · ${escapeHtml(record.account)} · ${escapeHtml(record.status)} · ${escapeHtml(record.published_at || record.created_at)}</div>`,
+                        )
+                        .join("")
+                    : '<div class="muted">暂无发布记录。</div>'
+                }
+              </div>
+
+              <div class="section">
+                <h2>最近事件</h2>
+                <div class="events">
+                  ${events
+                    .map(
+                      (event) =>
+                        `<div class="event"><b>${escapeHtml(event.event_type)}</b><div class="muted">${escapeHtml(event.created_at)} · ${escapeHtml(event.module)}</div><div>${escapeHtml(event.message)}</div></div>`,
+                    )
+                    .join("")}
+                </div>
+              </div>
+            </div>
+            <div>
+              <img class="poster" src="/api/videos/${encodeURIComponent(video.video_id)}/file?type=poster" alt="" />
+              <div class="actions">
+                <a href="/api/videos/${encodeURIComponent(video.video_id)}/file?type=merged" target="_blank" rel="noreferrer"><button>查看视频</button></a>
+                <a href="/api/videos/${encodeURIComponent(video.video_id)}/file?type=meta" target="_blank" rel="noreferrer"><button>meta</button></a>
+              </div>
+            </div>
+          </div>
+        `;
+
+        for (const button of $("detail").querySelectorAll("button[data-action]")) {
+          button.addEventListener("click", () => runVideoAction(video.video_id, button.dataset.action));
+        }
+      }
+
+      async function runVideoAction(videoId, action) {
+        const body = {};
+        if (action === "publish") {
+          if (!window.confirm("确认真实发布到 B 站？")) return;
+          body.confirm = true;
+        }
+        if (action === "skip") {
+          if (!window.confirm("确认跳过该视频？")) return;
+        }
+        try {
+          const result = await api(`/api/videos/${encodeURIComponent(videoId)}/${action}`, {
+            method: "POST",
+            body: JSON.stringify(body),
+          });
+          showToast(JSON.stringify(result, null, 2));
+          await loadAll(videoId);
+        } catch (error) {
+          showToast(error.message);
+        }
+      }
+
+      async function loadAll(keepSelected = state.selectedId) {
+        const [status, list] = await Promise.all([
+          api("/api/status?events_limit=5"),
+          api(`/api/videos?limit=80${state.status ? `&status=${encodeURIComponent(state.status)}` : ""}`),
+        ]);
+        renderStats(status);
+        state.videos = list.videos;
+        renderList();
+        if (keepSelected && state.videos.some((item) => item.video.video_id === keepSelected)) {
+          await selectVideo(keepSelected);
+        } else {
+          $("selectedId").textContent = "未选择";
+          $("detail").innerHTML = '<div class="muted">请选择一个视频。</div>';
+        }
+      }
+
+      $("refresh").addEventListener("click", () => loadAll().catch((error) => showToast(error.message)));
+      $("statusFilter").addEventListener("change", (event) => {
+        state.status = event.target.value;
+        loadAll("").catch((error) => showToast(error.message));
+      });
+      $("workerRun").addEventListener("click", async () => {
+        try {
+          const result = await api("/api/worker-run", { method: "POST", body: "{}" });
+          showToast(JSON.stringify(result, null, 2));
+          await loadAll();
+        } catch (error) {
+          showToast(error.message);
+        }
+      });
+      $("discoverDryRun").addEventListener("click", async () => {
+        try {
+          const result = await api("/api/discover", { method: "POST", body: JSON.stringify({ dry_run: true }) });
+          showToast(JSON.stringify(result, null, 2));
+        } catch (error) {
+          showToast(error.message);
+        }
+      });
+
+      loadAll().catch((error) => showToast(error.message));
+    </script>
+  </body>
+</html>

@@ -288,7 +288,7 @@ youtube-pipeline/app/worker/
 
 2. worker-run 一次性执行
    - `youtube-pipeline worker-run`
-   - 每轮按顺序执行 `download-next`、`describe-next`、`publish-next`
+   - 每轮按顺序执行 `discovery`、`download-next`、`describe-next`、`publish-next`
    - 每个阶段最多处理一条
    - 单个阶段失败不阻断后续阶段
    - 写入 `worker_run_started`、`worker_run_finished` events
@@ -304,19 +304,25 @@ youtube-pipeline/app/worker/
    - `WORKER_PUBLISH_DRY_RUN=true` 时 worker 发布只 dry-run
    - CLI 可用 `--enable-publish`、`--publish-dry-run` 覆盖本轮行为
 
-5. jobs 领取机制（后续增强）
+5. 发现低水位触发
+   - `WORKER_ENABLE_DISCOVERY=true` 时 worker 可执行 discovery
+   - `WORKER_DISCOVERY_MIN_QUEUE_SIZE` 控制 active queue 低水位
+   - `WORKER_DISCOVERY_SOURCE` 可限制 worker 只跑某一类 discovery source
+   - active queue 达到低水位时跳过 discovery，避免无限堆积候选
+
+6. jobs 领取机制（后续增强）
    - 找到可执行 job
    - 设置 `locked_at`
    - 设置 `lock_owner`
    - 防止重复执行
 
-6. 重试策略（后续增强）
+7. 重试策略（后续增强）
    - `attempts`
    - `max_attempts`
    - 失败后延迟重试
    - 超过次数标记 failed
 
-7. 操作命令
+8. 操作命令
    - `youtube-pipeline retry <video_id>`
    - `youtube-pipeline skip <video_id>`
    - `youtube-pipeline status`
@@ -339,14 +345,18 @@ youtube-pipeline/app/worker/
 
 已完成第一版：
 
-- `worker-run`：执行一轮 download/describe/publish。
+- `worker-run`：已接入 discovery 低水位补充，执行顺序为 discovery/download/describe/publish。
 - `worker`：循环执行，支持 `--once` 和 `--interval`。
+- `WORKER_ENABLE_DISCOVERY`：控制 worker 是否允许发现新候选。
+- `WORKER_DISCOVERY_MIN_QUEUE_SIZE`：active queue 低于该值时触发 discovery。
+- `WORKER_DISCOVERY_SOURCE`：可限制 worker 只执行 `search`、`trending` 或 `channel_uploads`。
 - `WORKER_ENABLE_PUBLISH`：控制 worker 是否允许发布。
 - `WORKER_PUBLISH_DRY_RUN`：控制 worker 发布是否 dry-run。
-- `status`：展示视频状态统计、job 状态统计、失败视频和最近事件。
+- `status`：展示视频状态统计、active queue 数量、job 状态统计、失败视频和最近事件。
 - `retry`：将 failed 视频按最近失败 job 或当前产物推断回到 download/describe/publish 阶段。
 - `skip`：手动跳过未发布视频；活跃状态需要 `--force`。
 - 单元测试覆盖发布禁用、发布启用 dry-run、阶段失败继续运行。
+- 单元测试覆盖 discovery 低水位跳过策略。
 - 单元测试覆盖 status/retry/skip 的主要规则。
 
 未完成：
@@ -452,51 +462,49 @@ youtube-pipeline/app/discovery/
 - 更丰富的 discovery run 统计表。
 - 过滤原因可查询。
 - selected 视频能被 worker 后续处理。
+- discovery 已接入 worker 低水位补充，当前 active queue 达到阈值时会跳过 discovery，低于阈值时自动补充候选。
 
 ### 风险点
 
 - YouTube API 配额。
 - 搜索质量需要后续迭代，不在第一版过度优化。
 
-## P5：Web API
+## P5：Web 最小管理台
 
 ### 目标
 
-提供 Web 可视化所需后端接口。
+提供本地 Web 可视化和受控操作入口，让队列、草稿、事件和发布状态可见。
 
 ### 范围
 
-可选择 Flask 或 FastAPI。第一版建议优先使用现有 Python 依赖最少的方案。
+第一版使用标准库 `ThreadingHTTPServer`，不新增 Flask/FastAPI 依赖。
 
 新增：
 
 ```text
-youtube-pipeline/app/web/
-  __init__.py
-  api.py
-  schemas.py
+youtube-pipeline/app/web.py
+youtube-pipeline/app/web_static/index.html
 ```
 
-### API 草案
+### API
 
 ```text
+GET  /
+GET  /api/status
 GET  /api/videos
 GET  /api/videos/<video_id>
-GET  /api/videos/<video_id>/events
-GET  /api/videos/<video_id>/metadata
-GET  /api/videos/<video_id>/files
-GET  /api/jobs
-GET  /api/stats
+GET  /api/videos/<video_id>/file?type=meta|video|audio|poster|merged
 
-POST /api/videos
+POST /api/discover
+POST /api/worker-run
+POST /api/download-next
+POST /api/publish-next
 POST /api/videos/<video_id>/download
 POST /api/videos/<video_id>/describe
+POST /api/videos/<video_id>/publish-dry-run
 POST /api/videos/<video_id>/publish
 POST /api/videos/<video_id>/retry
 POST /api/videos/<video_id>/skip
-PATCH /api/videos/<video_id>/draft
-
-POST /api/discovery/run
 ```
 
 ### 验收标准
@@ -504,49 +512,67 @@ POST /api/discovery/run
 - 能通过 API 查看视频列表和详情。
 - 能查看 events。
 - 能触发下载、描述、发布。
-- 能编辑发布草稿。
 - API 不直接调用 yt-dlp/ffmpeg/biliup，而是调用 service 或创建 job。
+- 真实发布必须传 `confirm=true`，前端必须二次确认。
+- fallback tid 仍由 publish service 阻断真实发布。
+
+### 当前状态
+
+已完成最小版：
+
+- `youtube-pipeline web`：启动本地管理台。
+- `WEB_HOST`、`WEB_PORT`：控制 Web 绑定地址。
+- 队列列表：展示状态、频道、时长、播放量、tid、tid source。
+- 状态统计：展示 active queue、ready、published、failed。
+- 视频详情：展示基础信息、原链接、发布草稿、tid 选择理由、标签、发布记录、最近事件。
+- 文件入口：poster、merged 视频、meta。
+- 操作按钮：运行一轮、发现预览、下载、生成文案、发布预览、真实发布、重试、跳过。
+- 安全保护：真实发布需要前端确认和 API `confirm=true`；worker 自动发布仍默认关闭。
+- 浏览器验证：页面加载真实队列、详情可展示、发布预览不改变发布状态。
+
+未完成：
+
+- 草稿编辑和人工 approve/reject。
+- 登录认证。
+- 更细的筛选和搜索。
+- Web 上的批量操作。
 
 ### 风险点
 
 - 不要让 Web 绕过状态机直接改状态。
 - 操作接口需要防重复提交。
 
-## P6：Web 前端
+## P6：发布审核和自动发布调度
 
 ### 目标
 
-提供可视化操作界面。
+在 P5 可视化基础上增加审核状态、节流策略和受控自动发布。
 
-### 页面拆解
+### 任务拆解
 
-1. Dashboard
-   - 总视频数
-   - 各状态数量
-   - 今日下载/发布数量
-   - 最近错误
+1. 草稿审核
+   - `pending`
+   - `approved`
+   - `rejected`
+   - 只有 approved 才允许自动发布
 
-2. 视频列表
-   - 状态过滤
-   - 分类过滤
-   - 搜索标题/频道
-   - 快捷操作
+2. 自动发布模式
+   - `manual`
+   - `approved_auto`
+   - `full_auto` 预留
 
-3. 视频详情
-   - 基础信息
-   - meta 摘要
-   - 下载文件
-   - 发布草稿
-   - tid 选择理由
-   - events
+3. 发布节流
+   - 每日发布上限
+   - 最小发布间隔
+   - 可发布时间窗口
 
-4. 发布草稿编辑
+4. 草稿编辑
    - title
    - description
    - tags
    - tid
    - 保存
-   - 发布
+   - approve/reject
 
 5. Worker/任务页
    - jobs 列表

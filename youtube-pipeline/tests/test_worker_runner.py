@@ -16,6 +16,9 @@ class WorkerRunnerTests(unittest.TestCase):
         self.db_path = Path(self.temp_dir.name) / "pipeline.db"
         self.config = SimpleNamespace(
             db_path=self.db_path,
+            worker_enable_discovery=True,
+            worker_discovery_min_queue_size=3,
+            worker_discovery_source=None,
             worker_enable_publish=False,
             worker_publish_dry_run=True,
             worker_interval_seconds=1,
@@ -30,6 +33,7 @@ class WorkerRunnerTests(unittest.TestCase):
 
     def test_run_worker_once_runs_download_and_describe_with_publish_disabled(self):
         with (
+            patch("app.worker.runner.discover_videos", return_value={"inserted_count": 0, "accepted_count": 0}),
             patch("app.worker.runner.download_next", return_value={"status": "empty"}),
             patch("app.worker.runner.describe_next", return_value={"status": "ready_to_publish"}),
             patch("app.worker.runner.publish_next") as publish_next,
@@ -37,8 +41,8 @@ class WorkerRunnerTests(unittest.TestCase):
             result = run_worker_once(self.config)
 
         self.assertEqual(result["status"], "ok")
-        self.assertEqual([step["step"] for step in result["steps"]], ["download", "describe", "publish"])
-        self.assertEqual(result["steps"][2]["result"]["reason"], "worker_publish_disabled")
+        self.assertEqual([step["step"] for step in result["steps"]], ["discovery", "download", "describe", "publish"])
+        self.assertEqual(result["steps"][3]["result"]["reason"], "worker_publish_disabled")
         publish_next.assert_not_called()
         event_types = [event["event_type"] for event in self._events()]
         self.assertIn("worker_run_started", event_types)
@@ -46,6 +50,7 @@ class WorkerRunnerTests(unittest.TestCase):
 
     def test_run_worker_once_can_execute_publish_when_enabled(self):
         with (
+            patch("app.worker.runner.discover_videos", return_value={"inserted_count": 0, "accepted_count": 0}),
             patch("app.worker.runner.download_next", return_value={"status": "empty"}),
             patch("app.worker.runner.describe_next", return_value={"status": "empty"}),
             patch("app.worker.runner.publish_next", return_value={"status": "dry_run"}) as publish_next,
@@ -53,11 +58,12 @@ class WorkerRunnerTests(unittest.TestCase):
             result = run_worker_once(self.config, enable_publish=True, publish_dry_run=True)
 
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["steps"][2]["result"]["status"], "dry_run")
+        self.assertEqual(result["steps"][3]["result"]["status"], "dry_run")
         publish_next.assert_called_once()
 
     def test_run_worker_once_records_step_failure_and_continues(self):
         with (
+            patch("app.worker.runner.discover_videos", return_value={"inserted_count": 0, "accepted_count": 0}),
             patch("app.worker.runner.download_next", side_effect=RuntimeError("download failed")),
             patch("app.worker.runner.describe_next", return_value={"status": "empty"}),
             patch("app.worker.runner.publish_next") as publish_next,
@@ -66,9 +72,32 @@ class WorkerRunnerTests(unittest.TestCase):
             result = run_worker_once(self.config)
 
         self.assertEqual(result["status"], "failed")
-        self.assertFalse(result["steps"][0]["ok"])
-        self.assertEqual(result["steps"][1]["result"]["status"], "empty")
+        self.assertFalse(result["steps"][1]["ok"])
+        self.assertEqual(result["steps"][2]["result"]["status"], "empty")
         publish_next.assert_not_called()
+
+    def test_run_worker_once_skips_discovery_when_queue_is_large_enough(self):
+        with connect(self.db_path) as conn:
+            init_schema(conn)
+            repo = Repository(conn)
+            for index in range(3):
+                repo.upsert_video(
+                    f"abc123def4{index}",
+                    f"https://www.youtube.com/watch?v=abc123def4{index}",
+                    status="selected",
+                )
+            conn.commit()
+
+        with (
+            patch("app.worker.runner.discover_videos") as discover_videos,
+            patch("app.worker.runner.download_next", return_value={"status": "empty"}),
+            patch("app.worker.runner.describe_next", return_value={"status": "empty"}),
+        ):
+            result = run_worker_once(self.config)
+
+        self.assertEqual(result["steps"][0]["result"]["status"], "skipped")
+        self.assertEqual(result["steps"][0]["result"]["reason"], "queue_above_threshold")
+        discover_videos.assert_not_called()
 
 
 if __name__ == "__main__":

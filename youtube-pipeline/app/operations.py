@@ -22,6 +22,7 @@ def pipeline_status(config: Config, events_limit: int = 20) -> dict[str, Any]:
         return {
             "videos_by_status": repo.count_videos_by_status(),
             "jobs_by_type_status": repo.count_jobs_by_type_status(),
+            "active_queue_count": repo.count_active_queue(),
             "failed_videos": repo.list_videos(status="failed", limit=20),
             "recent_events": repo.list_events(limit=events_limit),
         }

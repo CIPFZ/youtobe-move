@@ -38,8 +38,13 @@ class Config:
         self.minimax_request_timeout = int(os.environ["MINIMAX_REQUEST_TIMEOUT"])
         self.minimax_max_tokens = int(os.environ["MINIMAX_MAX_TOKENS"])
         self.worker_interval_seconds = int(os.environ["WORKER_INTERVAL_SECONDS"])
+        self.worker_enable_discovery = os.environ["WORKER_ENABLE_DISCOVERY"].strip().lower() in {"1", "true", "yes", "on"}
+        self.worker_discovery_min_queue_size = int(os.environ["WORKER_DISCOVERY_MIN_QUEUE_SIZE"])
+        self.worker_discovery_source = os.environ["WORKER_DISCOVERY_SOURCE"].strip() or None
         self.worker_enable_publish = os.environ["WORKER_ENABLE_PUBLISH"].strip().lower() in {"1", "true", "yes", "on"}
         self.worker_publish_dry_run = os.environ["WORKER_PUBLISH_DRY_RUN"].strip().lower() in {"1", "true", "yes", "on"}
+        self.web_host = os.environ["WEB_HOST"]
+        self.web_port = int(os.environ["WEB_PORT"])
         self.discovery_sources_json = os.environ["DISCOVERY_SOURCES_JSON"]
         self.discovery_max_results_per_source = int(os.environ["DISCOVERY_MAX_RESULTS_PER_SOURCE"])
         self.discovery_min_duration_seconds = int(os.environ["DISCOVERY_MIN_DURATION_SECONDS"])
