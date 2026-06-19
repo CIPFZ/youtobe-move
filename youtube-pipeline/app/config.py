@@ -55,6 +55,12 @@ class Config:
         self.publish_daily_limit = int(os.environ["PUBLISH_DAILY_LIMIT"])
         self.publish_window_start = os.environ["PUBLISH_WINDOW_START"]
         self.publish_window_end = os.environ["PUBLISH_WINDOW_END"]
+        self.storage_max_gb = float(os.environ["STORAGE_MAX_GB"])
+        self.storage_warn_gb = float(os.environ["STORAGE_WARN_GB"])
+        self.storage_min_free_gb = float(os.environ["STORAGE_MIN_FREE_GB"])
+        self.storage_retention_days = int(os.environ["STORAGE_RETENTION_DAYS"])
+        self.storage_cleanup_enabled = os.environ["STORAGE_CLEANUP_ENABLED"].strip().lower() in {"1", "true", "yes", "on"}
+        self.storage_cleanup_statuses = os.environ["STORAGE_CLEANUP_STATUSES"]
         self.web_host = os.environ["WEB_HOST"]
         self.web_port = int(os.environ["WEB_PORT"])
         self.discovery_sources_json = os.environ["DISCOVERY_SOURCES_JSON"]

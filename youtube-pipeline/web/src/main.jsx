@@ -5,6 +5,7 @@ import {
   Download,
   Eye,
   FileText,
+  HardDrive,
   Play,
   RefreshCw,
   RotateCcw,
@@ -35,6 +36,12 @@ const configFields = [
   "PUBLISH_MODE",
   "PUBLISH_DAILY_LIMIT",
   "PUBLISH_MIN_INTERVAL_SECONDS",
+  "STORAGE_MAX_GB",
+  "STORAGE_WARN_GB",
+  "STORAGE_MIN_FREE_GB",
+  "STORAGE_RETENTION_DAYS",
+  "STORAGE_CLEANUP_ENABLED",
+  "STORAGE_CLEANUP_STATUSES",
 ];
 
 async function api(path, options = {}) {
@@ -63,6 +70,14 @@ function fmtDuration(seconds) {
 function fmtCount(value) {
   if (value === null || value === undefined || value === "") return "-";
   return Number(value).toLocaleString("zh-CN");
+}
+
+function fmtBytes(value) {
+  const bytes = Number(value || 0);
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
 }
 
 function statusMap(rows) {
@@ -119,6 +134,7 @@ function App() {
   const [selectedId, setSelectedId] = useState("");
   const [detail, setDetail] = useState(null);
   const [config, setConfig] = useState(null);
+  const [storage, setStorage] = useState(null);
   const [filters, setFilters] = useState({ status: "", draftStatus: "", errorType: "" });
   const [addUrls, setAddUrls] = useState("");
   const [toast, setToast] = useState("");
@@ -134,6 +150,10 @@ function App() {
 
   async function loadConfig() {
     setConfig(await api("/api/config"));
+  }
+
+  async function loadStorage() {
+    setStorage(await api("/api/storage"));
   }
 
   async function loadAll(keepSelected = selectedId) {
@@ -243,7 +263,7 @@ function App() {
   async function refreshAll() {
     setLoading(true);
     try {
-      await Promise.all([loadAll(), loadConfig()]);
+      await Promise.all([loadAll(), loadConfig(), loadStorage()]);
     } catch (error) {
       showToast(error.message);
     } finally {
@@ -269,6 +289,20 @@ function App() {
     ["locked", locks.locked || 0],
     ["mode", status?.settings?.publish_mode || "-"],
   ];
+
+  async function runStorageCleanup(dryRun) {
+    if (!dryRun && !window.confirm("确认清理符合条件的媒体文件？数据库记录会保留。")) return;
+    try {
+      const result = await api("/api/storage/cleanup", {
+        method: "POST",
+        body: JSON.stringify({ dry_run: dryRun, confirm: !dryRun }),
+      });
+      showToast(result);
+      await Promise.all([loadStorage(), loadAll(selectedId)]);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
 
   return (
     <>
@@ -351,10 +385,66 @@ function App() {
           </div>
           <ConfigPanel config={config} configByKey={configByKey} />
         </section>
+
+        <section className="panel wide">
+          <div className="panel-head">
+            <h2>存储</h2>
+            <div className="toolbar">
+              <IconButton icon={RefreshCw} onClick={loadStorage}>刷新</IconButton>
+              <IconButton icon={HardDrive} onClick={() => runStorageCleanup(true)}>清理预览</IconButton>
+              <IconButton icon={X} className="danger" onClick={() => runStorageCleanup(false)}>执行清理</IconButton>
+            </div>
+          </div>
+          <StoragePanel storage={storage} />
+        </section>
       </main>
 
       {toast ? <div className="toast show">{toast}</div> : null}
     </>
+  );
+}
+
+function StoragePanel({ storage }) {
+  if (!storage) return <div className="panel-body muted">正在加载存储信息。</div>;
+  const preview = storage.cleanup_preview || {};
+  const alerts = [
+    storage.over_max ? "超过最大占用" : "",
+    storage.over_warn ? "超过警戒线" : "",
+    storage.below_min_free ? "磁盘剩余空间不足" : "",
+  ].filter(Boolean);
+  return (
+    <div className="panel-body">
+      <div className="stats storage-stats">
+        <div className="stat"><span>下载目录</span><b>{fmtBytes(storage.total_size_bytes)}</b></div>
+        <div className="stat"><span>磁盘剩余</span><b>{fmtBytes(storage.disk_free_bytes)}</b></div>
+        <div className="stat"><span>清理候选</span><b>{preview.count || 0}</b></div>
+        <div className="stat"><span>可释放</span><b>{fmtBytes(preview.size_bytes)}</b></div>
+        <div className="stat"><span>保留天数</span><b>{storage.retention_days}</b></div>
+        <div className="stat"><span>清理开关</span><b>{storage.cleanup_enabled ? "on" : "off"}</b></div>
+      </div>
+      <div className="storage-path">{storage.output_dir}</div>
+      {alerts.length ? <div className="badges">{alerts.map((item) => <span className="badge failed" key={item}>{item}</span>)}</div> : null}
+      <div className="storage-grid">
+        <section className="section">
+          <h2>状态占用</h2>
+          {(storage.by_status || []).length ? storage.by_status.map((row) => (
+            <div className="storage-row" key={row.status}>
+              <span>{row.status}</span>
+              <b>{fmtBytes(row.size_bytes)}</b>
+            </div>
+          )) : <div className="muted">暂无媒体文件。</div>}
+        </section>
+        <section className="section">
+          <h2>清理候选</h2>
+          {(preview.items || []).length ? preview.items.slice(0, 12).map((item) => (
+            <div className="storage-row" key={item.video_id}>
+              <span>{item.video_id} · {item.status}</span>
+              <b>{fmtBytes(item.size_bytes)}</b>
+            </div>
+          )) : <div className="muted">暂无可清理内容。</div>}
+        </section>
+      </div>
+    </div>
   );
 }
 

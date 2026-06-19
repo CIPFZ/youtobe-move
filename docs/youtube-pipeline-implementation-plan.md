@@ -907,6 +907,83 @@ P9.2 未完成：
 - 更完整的批量操作，如批量 approve、批量 retry。
 - 列表筛选目前是 Web 层基础实现，后续数据量变大时需要下沉到 repository SQL。
 
+P9.3 草稿编辑和发布策略已完成基础版：
+
+- 新增 `Repository.update_publish_draft()`，草稿更新统一走 repository/service，不直接在 Web 拼 SQL。
+- 新增 `publish_service.update_publish_draft()`：
+  - 校验标题不能为空。
+  - 校验描述不能为空。
+  - 校验 tid 必须在 `BILIBILI_TID_OPTIONS` 白名单内。
+  - tags 复用发布侧规范化逻辑。
+  - 保存后 `tid_source=manual`。
+  - 保存后重置 review note/reviewed_at。
+- 新增 Web API：
+  - `PATCH /api/videos/<id>/draft`
+- React 详情页支持编辑：
+  - title
+  - description
+  - tags
+  - tid
+  - draft status
+- 分区下拉从 `BILIBILI_TID_OPTIONS` 读取，不在前端硬编码。
+- 保存草稿后刷新当前视频详情，真实发布仍走原有 publish 校验。
+- 单元测试覆盖：
+  - 草稿保存后标记 manual。
+  - 草稿保存后重置审核信息。
+  - 非白名单 tid 拒绝保存。
+
+P9.3 未完成：
+
+- 批量草稿审核。
+- 草稿历史版本。
+- 更细的字段级校验，如标题长度、B 站标签数量上限提示。
+
+P9.4 存储监控和清理已完成基础版：
+
+- 新增存储配置：
+  - `STORAGE_MAX_GB`
+  - `STORAGE_WARN_GB`
+  - `STORAGE_MIN_FREE_GB`
+  - `STORAGE_RETENTION_DAYS`
+  - `STORAGE_CLEANUP_ENABLED`
+  - `STORAGE_CLEANUP_STATUSES`
+- 新增 `app/storage.py`：
+  - 统计 `OUTPUT_DIR` 目录占用。
+  - 统计磁盘总量、已用、剩余。
+  - 按视频状态聚合媒体文件占用。
+  - 按状态和保留天数生成清理候选。
+  - 支持 cleanup dry-run。
+  - 支持确认后删除媒体文件。
+- 清理策略：
+  - 只删除 `OUTPUT_DIR` 内存在的媒体文件。
+  - 默认候选状态为 `published,skipped,failed`。
+  - 不删除 `videos/jobs/events/publish_records` 等数据库记录。
+  - 删除后清空 `media_files` 中对应路径。
+  - 写入 `storage_media_cleaned` 事件。
+- 新增 Web API：
+  - `GET /api/storage`
+  - `POST /api/storage/cleanup`
+- 真实清理要求 `confirm=true`。
+- React 页面新增存储面板：
+  - 下载目录占用。
+  - 磁盘剩余。
+  - 清理候选数量。
+  - 可释放空间。
+  - 按状态占用。
+  - 清理候选预览。
+  - 清理预览/执行清理按钮。
+- 单元测试覆盖：
+  - 存储统计和清理候选。
+  - dry-run 不删除文件。
+  - 真实清理删除文件并清空媒体路径。
+
+P9.4 未完成：
+
+- worker 自动触发存储清理。
+- 单视频媒体文件清理按钮。
+- 清理策略更细分，如只清理已发布且发布超过 N 天。
+- 大数据量场景下的 SQL 聚合优化。
+
 ### 风险点
 
 - 不要在 P9 过早引入复杂前端工程。

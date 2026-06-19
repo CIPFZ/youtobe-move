@@ -18,6 +18,7 @@ from app.discovery import discover_videos
 from app.download_service import download_next, download_video_from_db
 from app.operations import add_video_url, add_video_urls, pipeline_status, retry_video, skip_video
 from app.publish_service import describe_video, publish_next, publish_video, review_publish_draft, update_publish_draft
+from app.storage import cleanup_media, get_storage_status
 from app.worker import run_worker_once
 from app.youtube_api import parse_video_id
 
@@ -253,6 +254,17 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
 
         if method == "GET" and path == "/api/config":
             self._send_json(list_config(self.config.base_dir))
+            return
+
+        if method == "GET" and path == "/api/storage":
+            self._send_json(get_storage_status(self.config))
+            return
+
+        if method == "POST" and path == "/api/storage/cleanup":
+            dry_run = bool(body.get("dry_run", True))
+            if not dry_run and body.get("confirm") is not True:
+                raise WebError(HTTPStatus.BAD_REQUEST, "Storage cleanup requires confirm=true")
+            self._send_json(cleanup_media(self.config, dry_run=dry_run))
             return
 
         if method == "PATCH" and path == "/api/config":

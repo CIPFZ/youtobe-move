@@ -243,6 +243,30 @@ class Repository:
         row = self.conn.execute("SELECT * FROM media_files WHERE video_id=?", (video_id,)).fetchone()
         return row_to_dict(row)
 
+    def clear_media_files(self, video_id: str, fields: list[str]) -> None:
+        allowed_fields = {"meta_path", "video_path", "audio_path", "poster_path", "merged_path"}
+        selected = [field for field in fields if field in allowed_fields]
+        if not selected:
+            return
+        assignments = ", ".join(f"{field}=''" for field in selected)
+        self.conn.execute(
+            f"""
+            UPDATE media_files
+            SET {assignments}, updated_at=CURRENT_TIMESTAMP
+            WHERE video_id=?
+            """,
+            (video_id,),
+        )
+        self.create_event(
+            video_id,
+            None,
+            "core",
+            "media_files_cleared",
+            "Media file paths cleared",
+            {"fields": selected},
+        )
+        self.conn.commit()
+
     def save_publish_draft(
         self,
         video_id: str,
