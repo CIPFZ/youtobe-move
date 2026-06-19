@@ -984,6 +984,43 @@ P9.4 未完成：
 - 清理策略更细分，如只清理已发布且发布超过 N 天。
 - 大数据量场景下的 SQL 聚合优化。
 
+P9.5 发现源管理已完成基础版：
+
+- 新增 `app/discovery/source_config.py`。
+- 发现源仍以 `DISCOVERY_SOURCES_JSON` 持久化，不新增表。
+- 新增发现源校验和规范化：
+  - 支持 `search`。
+  - 支持 `trending`。
+  - 支持 `channel_uploads`。
+  - `max_results` 限制为 1-50。
+  - `search` 必须有 keyword。
+  - `channel_uploads` 必须有 channel_id 或 handle。
+  - handle 自动补齐 `@`。
+- 新增 Web API：
+  - `GET /api/discovery/sources`
+  - `POST /api/discovery/sources`
+  - `PATCH /api/discovery/sources`
+  - `PATCH /api/discovery/sources/<index>`
+  - `DELETE /api/discovery/sources/<index>`
+- 发现源变更复用 `config_service.update_config()` 写回 `.env`，并写入配置审计事件。
+- Web 页面新增发现源管理面板：
+  - 列表查看现有 source。
+  - 新增 source。
+  - 编辑 source。
+  - 删除 source。
+  - 表单按 source type 显示不同字段。
+- 单元测试覆盖：
+  - 类型字段校验。
+  - 列表 index。
+  - 新增、更新、删除写回 `.env`。
+
+P9.5 未完成：
+
+- source 启用/禁用字段。
+- source 优先级/权重。
+- source 级别过滤规则。
+- 对单个 source 进行 dry-run 预览并展示候选详情。
+
 ### 风险点
 
 - 不要在 P9 过早引入复杂前端工程。

@@ -15,6 +15,13 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.discovery import discover_videos
+from app.discovery.source_config import (
+    add_discovery_source,
+    delete_discovery_source,
+    list_discovery_source_configs,
+    replace_discovery_sources,
+    update_discovery_source,
+)
 from app.download_service import download_next, download_video_from_db
 from app.operations import add_video_url, add_video_urls, pipeline_status, retry_video, skip_video
 from app.publish_service import describe_video, publish_next, publish_video, review_publish_draft, update_publish_draft
@@ -203,6 +210,9 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
     def do_PATCH(self) -> None:
         self._handle("PATCH")
 
+    def do_DELETE(self) -> None:
+        self._handle("DELETE")
+
     def _handle(self, method: str) -> None:
         try:
             parsed = urlparse(self.path)
@@ -233,7 +243,7 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def _handle_api(self, method: str, path: str, query: dict[str, list[str]]) -> None:
-        body = self._read_body() if method in {"POST", "PATCH"} else {}
+        body = self._read_body() if method in {"POST", "PATCH", "DELETE"} else {}
         parts = [part for part in path.split("/") if part]
 
         if method == "GET" and path == "/api/status":
@@ -307,6 +317,49 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
             source = body.get("source") or None
             dry_run = bool(body.get("dry_run", False))
             self._send_json(discover_videos(self.config, source_type=source, dry_run=dry_run))
+            return
+
+        if method == "GET" and path == "/api/discovery/sources":
+            self._send_json(list_discovery_source_configs(self.config))
+            return
+
+        if method == "PATCH" and path == "/api/discovery/sources":
+            sources = body.get("sources")
+            if not isinstance(sources, list):
+                raise WebError(HTTPStatus.BAD_REQUEST, "sources must be a list")
+            try:
+                result = replace_discovery_sources(self.config, sources)
+            except ValueError as exc:
+                raise WebError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
+            self.server.config = load_config()
+            self._send_json(result)
+            return
+
+        if method == "POST" and path == "/api/discovery/sources":
+            source = body.get("source", body)
+            if not isinstance(source, dict):
+                raise WebError(HTTPStatus.BAD_REQUEST, "source must be an object")
+            try:
+                result = add_discovery_source(self.config, source)
+            except ValueError as exc:
+                raise WebError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
+            self.server.config = load_config()
+            self._send_json(result)
+            return
+
+        if len(parts) == 4 and parts[:3] == ["api", "discovery", "sources"]:
+            try:
+                index = int(parts[3])
+                if method == "PATCH":
+                    result = update_discovery_source(self.config, index, body)
+                elif method == "DELETE":
+                    result = delete_discovery_source(self.config, index)
+                else:
+                    raise WebError(HTTPStatus.NOT_FOUND, "Not found")
+            except (ValueError, IndexError) as exc:
+                raise WebError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
+            self.server.config = load_config()
+            self._send_json(result)
             return
 
         if method == "POST" and path == "/api/worker-run":

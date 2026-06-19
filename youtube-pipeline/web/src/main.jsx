@@ -135,6 +135,7 @@ function App() {
   const [detail, setDetail] = useState(null);
   const [config, setConfig] = useState(null);
   const [storage, setStorage] = useState(null);
+  const [discoverySources, setDiscoverySources] = useState([]);
   const [filters, setFilters] = useState({ status: "", draftStatus: "", errorType: "" });
   const [addUrls, setAddUrls] = useState("");
   const [toast, setToast] = useState("");
@@ -154,6 +155,11 @@ function App() {
 
   async function loadStorage() {
     setStorage(await api("/api/storage"));
+  }
+
+  async function loadDiscoverySources() {
+    const payload = await api("/api/discovery/sources");
+    setDiscoverySources(payload.sources || []);
   }
 
   async function loadAll(keepSelected = selectedId) {
@@ -263,7 +269,7 @@ function App() {
   async function refreshAll() {
     setLoading(true);
     try {
-      await Promise.all([loadAll(), loadConfig(), loadStorage()]);
+      await Promise.all([loadAll(), loadConfig(), loadStorage(), loadDiscoverySources()]);
     } catch (error) {
       showToast(error.message);
     } finally {
@@ -299,6 +305,33 @@ function App() {
       });
       showToast(result);
       await Promise.all([loadStorage(), loadAll(selectedId)]);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
+
+  async function saveDiscoverySource(source, index = null) {
+    try {
+      const path = index === null ? "/api/discovery/sources" : `/api/discovery/sources/${index}`;
+      const result = await api(path, {
+        method: index === null ? "POST" : "PATCH",
+        body: JSON.stringify(index === null ? { source } : source),
+      });
+      setDiscoverySources(result.sources || []);
+      await loadConfig();
+      showToast(result);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
+
+  async function deleteDiscoverySource(index) {
+    if (!window.confirm("确认删除该发现源？")) return;
+    try {
+      const result = await api(`/api/discovery/sources/${index}`, { method: "DELETE", body: "{}" });
+      setDiscoverySources(result.sources || []);
+      await loadConfig();
+      showToast(result);
     } catch (error) {
       showToast(error.message);
     }
@@ -397,10 +430,159 @@ function App() {
           </div>
           <StoragePanel storage={storage} />
         </section>
+
+        <section className="panel wide">
+          <div className="panel-head">
+            <h2>发现源</h2>
+            <div className="toolbar">
+              <IconButton icon={RefreshCw} onClick={loadDiscoverySources}>刷新</IconButton>
+            </div>
+          </div>
+          <DiscoverySourcesPanel
+            sources={discoverySources}
+            onSave={saveDiscoverySource}
+            onDelete={deleteDiscoverySource}
+          />
+        </section>
       </main>
 
       {toast ? <div className="toast show">{toast}</div> : null}
     </>
+  );
+}
+
+function emptyDiscoveryForm() {
+  return {
+    type: "search",
+    name: "",
+    keyword: "",
+    region_code: "US",
+    video_category_id: "",
+    channel_id: "",
+    handle: "",
+    order: "relevance",
+    max_results: "2",
+  };
+}
+
+function sourceToForm(source) {
+  return {
+    ...emptyDiscoveryForm(),
+    ...Object.fromEntries(Object.entries(source || {}).map(([key, value]) => [key, String(value ?? "")])),
+    type: source?.type || "search",
+    max_results: String(source?.max_results || 2),
+  };
+}
+
+function formToSource(form) {
+  const source = {
+    type: form.type,
+    name: form.name.trim(),
+    max_results: Number.parseInt(form.max_results || "2", 10),
+  };
+  if (form.type === "search") {
+    source.keyword = form.keyword.trim();
+    if (form.order.trim()) source.order = form.order.trim();
+    if (form.channel_id.trim()) source.channel_id = form.channel_id.trim();
+    if (form.region_code.trim()) source.region_code = form.region_code.trim();
+    if (form.video_category_id.trim()) source.video_category_id = form.video_category_id.trim();
+  } else if (form.type === "trending") {
+    source.region_code = form.region_code.trim() || "US";
+    if (form.video_category_id.trim()) source.video_category_id = form.video_category_id.trim();
+  } else if (form.type === "channel_uploads") {
+    if (form.channel_id.trim()) source.channel_id = form.channel_id.trim();
+    if (form.handle.trim()) source.handle = form.handle.trim();
+  }
+  return source;
+}
+
+function DiscoverySourcesPanel({ sources, onSave, onDelete }) {
+  const [selectedIndex, setSelectedIndex] = useState(null);
+  const [form, setForm] = useState(emptyDiscoveryForm);
+
+  function editSource(source) {
+    setSelectedIndex(source.index);
+    setForm(sourceToForm(source));
+  }
+
+  function resetForm() {
+    setSelectedIndex(null);
+    setForm(emptyDiscoveryForm());
+  }
+
+  function updateField(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function submit() {
+    await onSave(formToSource(form), selectedIndex);
+    resetForm();
+  }
+
+  return (
+    <div className="panel-body discovery-layout">
+      <div>
+        {(sources || []).length ? sources.map((source) => (
+          <button className={`source-row${selectedIndex === source.index ? " active" : ""}`} key={source.index} onClick={() => editSource(source)}>
+            <div>
+              <b>{source.name || `${source.type}:${source.index}`}</b>
+              <div className="muted">{source.type} · max {source.max_results} · {source.keyword || source.region_code || source.handle || source.channel_id || "-"}</div>
+            </div>
+            <span className="badge">{source.index}</span>
+          </button>
+        )) : <div className="muted">暂无发现源。</div>}
+      </div>
+      <div className="source-form">
+        <div className="draft-row">
+          <label>
+            <span>类型</span>
+            <select value={form.type} onChange={(event) => updateField("type", event.target.value)}>
+              <option value="search">search</option>
+              <option value="trending">trending</option>
+              <option value="channel_uploads">channel_uploads</option>
+            </select>
+          </label>
+          <label>
+            <span>数量</span>
+            <input value={form.max_results} onChange={(event) => updateField("max_results", event.target.value)} />
+          </label>
+        </div>
+        <label>
+          <span>名称</span>
+          <input value={form.name} onChange={(event) => updateField("name", event.target.value)} />
+        </label>
+        {form.type === "search" ? (
+          <>
+            <label><span>关键词</span><input value={form.keyword} onChange={(event) => updateField("keyword", event.target.value)} /></label>
+            <div className="draft-row">
+              <label><span>排序</span><input value={form.order} onChange={(event) => updateField("order", event.target.value)} /></label>
+              <label><span>地区</span><input value={form.region_code} onChange={(event) => updateField("region_code", event.target.value)} /></label>
+            </div>
+            <div className="draft-row">
+              <label><span>频道 ID</span><input value={form.channel_id} onChange={(event) => updateField("channel_id", event.target.value)} /></label>
+              <label><span>分类 ID</span><input value={form.video_category_id} onChange={(event) => updateField("video_category_id", event.target.value)} /></label>
+            </div>
+          </>
+        ) : null}
+        {form.type === "trending" ? (
+          <div className="draft-row">
+            <label><span>地区</span><input value={form.region_code} onChange={(event) => updateField("region_code", event.target.value)} /></label>
+            <label><span>分类 ID</span><input value={form.video_category_id} onChange={(event) => updateField("video_category_id", event.target.value)} /></label>
+          </div>
+        ) : null}
+        {form.type === "channel_uploads" ? (
+          <div className="draft-row">
+            <label><span>频道 ID</span><input value={form.channel_id} onChange={(event) => updateField("channel_id", event.target.value)} /></label>
+            <label><span>Handle</span><input value={form.handle} onChange={(event) => updateField("handle", event.target.value)} /></label>
+          </div>
+        ) : null}
+        <div className="toolbar">
+          <IconButton icon={Save} className="primary" onClick={submit}>{selectedIndex === null ? "新增" : "保存"}</IconButton>
+          <button onClick={resetForm}>清空</button>
+          <button className="danger" disabled={selectedIndex === null} onClick={() => onDelete(selectedIndex)}>删除</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
