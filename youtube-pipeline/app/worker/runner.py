@@ -43,6 +43,13 @@ def _count_active_queue(config: Config) -> int:
         return repo.count_active_queue()
 
 
+def _recover_stale_jobs(config: Config, worker_id: str) -> dict[str, Any]:
+    with connect(config.db_path) as conn:
+        init_schema(conn)
+        repo = Repository(conn)
+        return repo.recover_stale_jobs(worker_id, getattr(config, "job_lease_seconds", 1800))
+
+
 def _maybe_discover(config: Config) -> dict[str, Any]:
     queue_size = _count_active_queue(config)
     min_queue_size = config.worker_discovery_min_queue_size
@@ -71,12 +78,14 @@ def run_worker_once(config: Config, enable_publish: bool | None = None, publish_
         "Worker run started",
         {
             "worker_id": worker_id,
+            "job_lease_seconds": getattr(config, "job_lease_seconds", 1800),
             "discovery_enabled": config.worker_enable_discovery,
             "publish_enabled": publish_enabled,
             "publish_dry_run": dry_run_publish,
         },
     )
     steps: list[dict[str, Any]] = []
+    steps.append(_run_step("recover", lambda: _recover_stale_jobs(config, worker_id)))
     if config.worker_enable_discovery:
         steps.append(_run_step("discovery", lambda: _maybe_discover(config)))
     else:
@@ -87,10 +96,10 @@ def run_worker_once(config: Config, enable_publish: bool | None = None, publish_
                 "result": {"status": "skipped", "reason": "worker_discovery_disabled"},
             }
         )
-    steps.append(_run_step("download", lambda: download_next(config)))
-    steps.append(_run_step("describe", lambda: describe_next(config)))
+    steps.append(_run_step("download", lambda: download_next(config, worker_id=worker_id)))
+    steps.append(_run_step("describe", lambda: describe_next(config, worker_id=worker_id)))
     if publish_enabled:
-        steps.append(_run_step("publish", lambda: publish_next(config, dry_run=dry_run_publish)))
+        steps.append(_run_step("publish", lambda: publish_next(config, dry_run=dry_run_publish, worker_id=worker_id)))
     else:
         steps.append(
             {

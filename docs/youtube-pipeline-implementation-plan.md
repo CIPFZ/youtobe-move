@@ -21,6 +21,8 @@ P4 discovery 自动发现
 P5 web API
 P6 web 前端
 P7 失败分类、延迟重试和队列自愈
+P8 worker lock/lease 和运行态恢复
+P9 Web 管理重构
 ```
 
 ## P0：core 数据库和状态机
@@ -362,7 +364,7 @@ youtube-pipeline/app/worker/
 
 未完成：
 
-- 多 worker lock/lease。
+- 多 worker 压力测试。
 
 ## P4：discovery 自动发现
 
@@ -673,7 +675,6 @@ POST /api/videos/<video_id>/skip
 
 - Web 上按 `error_type` 过滤失败项。
 - 更细的 YouTube 限流、版权、地区限制分类。
-- 多 worker lock/lease。
 
 ### 验收标准
 
@@ -681,46 +682,125 @@ POST /api/videos/<video_id>/skip
 - YouTube 403 类错误直接进入 failed，不自动反复重试。
 - `status` 和 Web 能看到错误类型和下一次执行时间。
 - worker 后续轮次不会执行 `next_run_at` 未到的 pending job。
-- 页面不隐藏错误。
-- 发布前能看到 title/description/tags/tid。
+
+## P8：worker lock/lease 和运行态恢复
+
+### 目标
+
+让 worker 可以长期稳定运行，进程重启或异常退出后不会留下永久卡住的任务，并为后续多 worker 做基础。
+
+### 任务拆解
+
+1. job 领取
+   - 使用 `locked_at` 和 `lock_owner` 标记任务归属。
+   - 领取任务时只领取未锁定或锁超时的 pending job。
+   - worker 写入稳定的 worker id。
+
+2. lease 超时
+   - 新增配置 `JOB_LEASE_SECONDS`。
+   - 未超时的 job 不允许被其它 worker 领取。
+   - 超时的 running/pending locked job 可被恢复。
+
+3. 运行态恢复
+   - 启动 worker 或执行 `worker-run` 前扫描卡住状态。
+   - `running` job 超时后按 job_type 回到 pending。
+   - 视频状态从 `downloading/describing/publishing` 回退到对应可执行状态。
+   - 写入恢复事件，保留原错误信息。
+
+4. CLI/Web 可见性
+   - `status` 展示 locked/running/overdue job 数量。
+   - Web 详情展示 lock owner、locked_at、是否超时。
+
+### 当前状态
+
+已完成：
+
+- 新增 `JOB_LEASE_SECONDS`，控制 locked/running job 的 lease 超时时间。
+- `Repository.claim_pending_job()`：领取 due pending job，写入 `locked_at` 和 `lock_owner`。
+- `Repository.recover_stale_jobs()`：恢复过期 pending lock 和 running job。
+- `worker-run/worker` 每轮第一步执行 `recover`。
+- worker 调用 download/describe/publish 时传入 `worker_id`，服务层会先领取 job 再执行。
+- succeeded/failed/cancelled/retry job 会释放 lock。
+- `status` 增加 `job_lock_status`，Web 总览展示 running/locked 数。
+- Web 视频详情展示 job 的 `lock_owner` 和 `locked_at`。
+- 单元测试覆盖：
+  - job 领取后阻止第二个 worker 重复领取
+  - stale running download job 恢复为 pending，视频回到 selected
+  - download/describe/publish-next 尊重延迟重试
+  - worker-run 增加 recover 步骤
+
+未完成：
+
+- Web 上标记 lock 是否已超时。
+- 独立 jobs 列表页。
+- 真正多进程 worker 的压力测试。
+
+### 验收标准
+
+- 正常领取的 job 不会被重复领取。
+- lease 未超时不会被恢复。
+- lease 超时后 worker 能恢复并继续执行。
+- 进程中断后再次运行 worker 能把卡住状态恢复到队列。
+- 单元测试覆盖 download/describe/publish 三类 job 的恢复路径。
+
+## P9：Web 管理重构
+
+### 目标
+
+把当前验证型 Web 改成可长期使用的本地运营管理台。它仍然是内部工具，不做复杂权限系统和重视觉设计，但必须能高效管理发现、下载、文案、发布、失败处理。
+
+### 设计原则
+
+- Web 不直接改数据库，所有操作走 service/repository。
+- 页面围绕队列和状态管理，不做营销式首页。
+- 先满足可控运营：筛选、查看、编辑、审核、重试、跳过、发布。
+- 当前 `ThreadingHTTPServer` 可继续保留；如果页面复杂度明显上升，再迁移到更明确的后端结构。
+
+### 任务拆解
+
+1. 信息架构
+   - 总览页：队列状态、今日发布、失败数、待审核数、worker 状态。
+   - 视频列表页：按状态、来源、错误类型、草稿状态筛选。
+   - 视频详情页：meta、媒体文件、草稿、jobs、events、发布记录。
+   - 设置页：展示关键 env 配置的只读视图。
+
+2. 草稿管理
+   - 编辑 title。
+   - 编辑 description。
+   - 编辑 tags。
+   - 编辑 tid。
+   - 保存后可 approve/reject。
+   - fallback tid 必须显著提示。
+
+3. 队列操作
+   - 单条 download/describe/publish dry-run/real publish。
+   - 单条 retry/skip。
+   - 批量 approve。
+   - 批量 retry failed。
+   - 操作必须有明确反馈和错误展示。
+
+4. 失败管理
+   - 按 `error_type` 筛选。
+   - 显示 `next_run_at`。
+   - 显示 attempts/max_attempts。
+   - 支持不可重试失败的人工 retry。
+
+5. Worker 管理
+   - 展示当前 worker 配置。
+   - 手动运行一轮。
+   - 展示最近 worker events。
+   - 展示 lease/lock 状态。
+
+### 验收标准
+
+- 不使用 CLI 也能完成单个视频从查看、草稿编辑、审核到发布预览。
+- 能快速定位失败视频和失败原因。
+- 能看到任务是否在等待延迟重试。
+- 真实发布仍必须二次确认。
+- 页面在移动端和桌面端都不出现文本重叠。
 
 ### 风险点
 
-- 第一版不要做复杂视觉设计。
-- 操作型界面优先密度、清晰、可控。
-
-## 第一阶段建议实施包
-
-下一步建议只做：
-
-```text
-P0 + P1 的最小闭环
-```
-
-具体任务：
-
-1. 新建 `core/`。
-2. 新建 SQLite schema。
-3. 实现 repository。
-4. 实现 `init-db`。
-5. 实现 `add-url`。
-6. 把当前下载逻辑接入 DB。
-7. 下载完成写 `media_files`。
-8. 错误写 `events`。
-9. 下载/合并改原子替换。
-
-完成后验收：
-
-```bash
-youtube-pipeline init-db
-youtube-pipeline add-url "https://www.youtube.com/watch?v=..."
-youtube-pipeline download-next
-youtube-pipeline list
-```
-
-预期：
-
-- DB 中有视频记录。
-- 状态从 `selected` 到 `downloaded`。
-- 文件路径入库。
-- 失败可查 events。
+- 不要在 P9 过早引入复杂前端工程。
+- 不要让 Web 绕过状态机。
+- Web 重构应在 P8 后做，否则 worker 状态展示会缺关键字段。

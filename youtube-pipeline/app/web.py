@@ -215,6 +215,7 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
                 "publish_mode": self.config.publish_mode,
                 "worker_enable_publish": self.config.worker_enable_publish,
                 "worker_publish_dry_run": self.config.worker_publish_dry_run,
+                "job_lease_seconds": self.config.job_lease_seconds,
                 "publish_min_interval_seconds": self.config.publish_min_interval_seconds,
                 "publish_daily_limit": self.config.publish_daily_limit,
                 "publish_window_start": self.config.publish_window_start,

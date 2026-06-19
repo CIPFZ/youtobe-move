@@ -455,10 +455,13 @@
       function renderStats(status) {
         const counts = statusMap(status.videos_by_status);
         const settings = status.settings || {};
+        const locks = status.job_lock_status || {};
         $("stats").innerHTML = [
           ["active", status.active_queue_count || 0],
           ["ready", counts.ready_to_publish || 0],
           ["published", counts.published || 0],
+          ["running", locks.running || 0],
+          ["locked", locks.locked || 0],
           ["mode", settings.publish_mode || "-"],
         ]
           .map(([label, value]) => `<div class="stat"><span>${label}</span><b>${value}</b></div>`)
@@ -594,7 +597,8 @@
                     ? jobs
                         .map(([name, job]) => {
                           const attempts = `${job.attempts || 0}/${job.max_attempts || 0}`;
-                          const detail = [job.error_type, job.next_run_at ? `next ${job.next_run_at}` : "", job.error]
+                          const lock = job.locked_at ? `lock ${job.lock_owner || "-"} ${job.locked_at}` : "";
+                          const detail = [job.error_type, job.next_run_at ? `next ${job.next_run_at}` : "", lock, job.error]
                             .filter(Boolean)
                             .join(" · ");
                           return `<div class="event"><b>${name}</b> · <span class="badge ${job.status}">${escapeHtml(job.status)}</span> · ${attempts}<div class="muted">${escapeHtml(detail || "-")}</div></div>`;

@@ -26,7 +26,33 @@ def _existing_merged_file(repo: Repository, video_id: str) -> Path | None:
     return path if path.exists() else None
 
 
-def _ensure_download_job(repo: Repository, video: dict[str, Any], force: bool) -> int:
+def _ensure_download_job(
+    repo: Repository,
+    video: dict[str, Any],
+    force: bool,
+    worker_id: str | None = None,
+    lease_seconds: int = 1800,
+    claimed_job_id: int | None = None,
+) -> int:
+    if claimed_job_id is not None:
+        return claimed_job_id
+
+    if worker_id and not force:
+        claimed = repo.claim_pending_job("download", worker_id, lease_seconds, video_id=str(video["video_id"]))
+        if claimed:
+            return int(claimed["id"])
+        if repo.get_pending_job("download", video_id=str(video["video_id"]), include_future=True):
+            raise RuntimeError(f"Download job is not ready to run yet: {video['video_id']}")
+        job_id = repo.create_job(
+            "download",
+            video_id=str(video["video_id"]),
+            payload={"url": video["source_url"], "force": force},
+        )
+        claimed = repo.claim_pending_job("download", worker_id, lease_seconds, video_id=str(video["video_id"]))
+        if not claimed:
+            raise RuntimeError(f"Download job could not be claimed: {job_id}")
+        return int(claimed["id"])
+
     pending = repo.get_pending_job("download", video_id=str(video["video_id"]))
     if pending and not force:
         return int(pending["id"])
@@ -45,7 +71,13 @@ def _event_writer(repo: Repository, video_id: str, job_id: int):
     return write
 
 
-def download_video_from_db(video_id: str, config: Config, force: bool = False) -> dict[str, Any]:
+def download_video_from_db(
+    video_id: str,
+    config: Config,
+    force: bool = False,
+    worker_id: str | None = None,
+    claimed_job_id: int | None = None,
+) -> dict[str, Any]:
     with connect(config.db_path) as conn:
         init_schema(conn)
         repo = Repository(conn)
@@ -71,7 +103,14 @@ def download_video_from_db(video_id: str, config: Config, force: bool = False) -
                 "merged": str(existing_merged),
             }
 
-        job_id = _ensure_download_job(repo, video, force)
+        job_id = _ensure_download_job(
+            repo,
+            video,
+            force,
+            worker_id=worker_id,
+            lease_seconds=getattr(config, "job_lease_seconds", 1800),
+            claimed_job_id=claimed_job_id,
+        )
         repo.update_job_status(job_id, "running")
         try:
             repo.update_video_status(video_id, "downloading", "Download started")
@@ -125,13 +164,18 @@ def download_video_from_db(video_id: str, config: Config, force: bool = False) -
             raise
 
 
-def download_next(config: Config, force: bool = False) -> dict[str, Any]:
+def download_next(config: Config, force: bool = False, worker_id: str | None = None) -> dict[str, Any]:
+    claimed_job_id: int | None = None
     with connect(config.db_path) as conn:
         init_schema(conn)
         repo = Repository(conn)
-        job = repo.get_pending_job("download")
+        if worker_id:
+            job = repo.claim_pending_job("download", worker_id, getattr(config, "job_lease_seconds", 1800))
+        else:
+            job = repo.get_pending_job("download")
         if job:
             video_id = str(job["video_id"])
+            claimed_job_id = int(job["id"])
         else:
             selected = repo.list_videos(status="selected", limit=50)
             runnable_video = next(
@@ -146,4 +190,10 @@ def download_next(config: Config, force: bool = False) -> dict[str, Any]:
                 return {"status": "empty", "message": "No selected videos waiting for download"}
             video_id = str(runnable_video["video_id"])
 
-    return download_video_from_db(video_id, config, force=force)
+    return download_video_from_db(
+        video_id,
+        config,
+        force=force,
+        worker_id=worker_id,
+        claimed_job_id=claimed_job_id if worker_id else None,
+    )

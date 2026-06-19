@@ -94,7 +94,34 @@ def _check_publish_throttle(repo: Repository, config: Config) -> dict[str, Any]:
     return {"ok": True}
 
 
-def _ensure_job(repo: Repository, job_type: str, video: dict[str, Any], force: bool = False) -> int:
+def _ensure_job(
+    repo: Repository,
+    job_type: str,
+    video: dict[str, Any],
+    force: bool = False,
+    worker_id: str | None = None,
+    lease_seconds: int = 1800,
+    claimed_job_id: int | None = None,
+) -> int:
+    if claimed_job_id is not None:
+        return claimed_job_id
+
+    if worker_id and not force:
+        claimed = repo.claim_pending_job(job_type, worker_id, lease_seconds, video_id=str(video["video_id"]))
+        if claimed:
+            return int(claimed["id"])
+        if repo.get_pending_job(job_type, video_id=str(video["video_id"]), include_future=True):
+            raise RuntimeError(f"{job_type} job is not ready to run yet: {video['video_id']}")
+        job_id = repo.create_job(
+            job_type,
+            video_id=str(video["video_id"]),
+            payload={"url": video["source_url"], "force": force},
+        )
+        claimed = repo.claim_pending_job(job_type, worker_id, lease_seconds, video_id=str(video["video_id"]))
+        if not claimed:
+            raise RuntimeError(f"{job_type} job could not be claimed: {job_id}")
+        return int(claimed["id"])
+
     pending = repo.get_pending_job(job_type, video_id=str(video["video_id"]))
     if pending and not force:
         return int(pending["id"])
@@ -152,7 +179,13 @@ def _validate_publish_draft(draft: dict[str, Any], config: Config) -> None:
         raise RuntimeError("Publish draft tid came from fallback; regenerate or review before real publish")
 
 
-def describe_video(video_id: str, config: Config, force: bool = False) -> dict[str, Any]:
+def describe_video(
+    video_id: str,
+    config: Config,
+    force: bool = False,
+    worker_id: str | None = None,
+    claimed_job_id: int | None = None,
+) -> dict[str, Any]:
     with connect(config.db_path) as conn:
         init_schema(conn)
         repo = Repository(conn)
@@ -173,7 +206,15 @@ def describe_video(video_id: str, config: Config, force: bool = False) -> dict[s
             conn.commit()
             return {"status": "skipped", "reason": "draft_exists", "draft": existing}
 
-        job_id = _ensure_job(repo, "describe", video, force=force)
+        job_id = _ensure_job(
+            repo,
+            "describe",
+            video,
+            force=force,
+            worker_id=worker_id,
+            lease_seconds=getattr(config, "job_lease_seconds", 1800),
+            claimed_job_id=claimed_job_id,
+        )
         repo.update_job_status(job_id, "running")
         try:
             repo.update_video_status(video_id, "describing", "Description generation started")
@@ -234,7 +275,14 @@ def describe_video(video_id: str, config: Config, force: bool = False) -> dict[s
             raise
 
 
-def publish_video(video_id: str, config: Config, dry_run: bool = False, force: bool = False) -> dict[str, Any]:
+def publish_video(
+    video_id: str,
+    config: Config,
+    dry_run: bool = False,
+    force: bool = False,
+    worker_id: str | None = None,
+    claimed_job_id: int | None = None,
+) -> dict[str, Any]:
     with connect(config.db_path) as conn:
         init_schema(conn)
         repo = Repository(conn)
@@ -255,7 +303,15 @@ def publish_video(video_id: str, config: Config, dry_run: bool = False, force: b
             return {"status": "dry_run", "payload": payload}
 
         _validate_publish_draft(draft, config)
-        job_id = _ensure_job(repo, "publish", video, force=force)
+        job_id = _ensure_job(
+            repo,
+            "publish",
+            video,
+            force=force,
+            worker_id=worker_id,
+            lease_seconds=getattr(config, "job_lease_seconds", 1800),
+            claimed_job_id=claimed_job_id,
+        )
         repo.update_job_status(job_id, "running")
         try:
             repo.update_video_status(video_id, "publishing", "Publish started")
@@ -293,7 +349,12 @@ def publish_video(video_id: str, config: Config, dry_run: bool = False, force: b
             raise
 
 
-def publish_next(config: Config, dry_run: bool = False, force: bool = False) -> dict[str, Any]:
+def publish_next(
+    config: Config,
+    dry_run: bool = False,
+    force: bool = False,
+    worker_id: str | None = None,
+) -> dict[str, Any]:
     mode = _ensure_publish_mode(config)
     if mode == "manual":
         return {"status": "skipped", "reason": "publish_mode_manual"}
@@ -319,8 +380,26 @@ def publish_next(config: Config, dry_run: bool = False, force: bool = False) -> 
                 "publish_mode": mode,
             }
         video_id = str(video["video_id"])
+        claimed_job_id = None
+        if worker_id:
+            claimed = repo.claim_pending_job("publish", worker_id, getattr(config, "job_lease_seconds", 1800), video_id=video_id)
+            if claimed:
+                claimed_job_id = int(claimed["id"])
+            elif repo.get_pending_job("publish", video_id=video_id, include_future=True):
+                return {
+                    "status": "empty",
+                    "message": "No publishable videos waiting for automatic publish",
+                    "publish_mode": mode,
+                }
 
-    return publish_video(video_id, config, dry_run=dry_run, force=force)
+    return publish_video(
+        video_id,
+        config,
+        dry_run=dry_run,
+        force=force,
+        worker_id=worker_id,
+        claimed_job_id=claimed_job_id,
+    )
 
 
 def review_publish_draft(
@@ -338,13 +417,18 @@ def review_publish_draft(
         return {"status": "ok", "draft": draft}
 
 
-def describe_next(config: Config, force: bool = False) -> dict[str, Any]:
+def describe_next(config: Config, force: bool = False, worker_id: str | None = None) -> dict[str, Any]:
+    claimed_job_id: int | None = None
     with connect(config.db_path) as conn:
         init_schema(conn)
         repo = Repository(conn)
-        job = repo.get_pending_job("describe")
+        if worker_id:
+            job = repo.claim_pending_job("describe", worker_id, getattr(config, "job_lease_seconds", 1800))
+        else:
+            job = repo.get_pending_job("describe")
         if job:
             video_id = str(job["video_id"])
+            claimed_job_id = int(job["id"])
         else:
             downloaded = repo.list_videos(status="downloaded", limit=50)
             runnable_video = next(
@@ -359,4 +443,10 @@ def describe_next(config: Config, force: bool = False) -> dict[str, Any]:
                 return {"status": "empty", "message": "No downloaded videos waiting for describe"}
             video_id = str(runnable_video["video_id"])
 
-    return describe_video(video_id, config, force=force)
+    return describe_video(
+        video_id,
+        config,
+        force=force,
+        worker_id=worker_id,
+        claimed_job_id=claimed_job_id,
+    )

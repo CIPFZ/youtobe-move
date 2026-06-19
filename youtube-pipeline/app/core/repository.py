@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.status import JOB_STATUSES, ensure_video_status, ensure_video_transition
@@ -508,6 +508,20 @@ class Repository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def count_locked_jobs(self) -> dict[str, int]:
+        row = self.conn.execute(
+            """
+            SELECT
+                SUM(CASE WHEN status='running' THEN 1 ELSE 0 END) AS running,
+                SUM(CASE WHEN locked_at IS NOT NULL THEN 1 ELSE 0 END) AS locked
+            FROM jobs
+            """
+        ).fetchone()
+        return {
+            "running": int(row["running"] or 0),
+            "locked": int(row["locked"] or 0),
+        }
+
     def get_pending_job(
         self,
         job_type: str,
@@ -546,6 +560,74 @@ class Repository:
             ).fetchone()
         return row_to_dict(row)
 
+    def claim_pending_job(
+        self,
+        job_type: str,
+        worker_id: str,
+        lease_seconds: int,
+        video_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        lease_seconds = max(1, int(lease_seconds))
+        lease_modifier = f"-{lease_seconds} seconds"
+        filters = [
+            "jobs.job_type=?",
+            "jobs.status='pending'",
+            "(jobs.next_run_at IS NULL OR datetime(jobs.next_run_at) <= datetime('now'))",
+            "(jobs.locked_at IS NULL OR datetime(jobs.locked_at) <= datetime('now', ?))",
+        ]
+        params: list[Any] = [job_type, lease_modifier]
+        if video_id:
+            filters.append("jobs.video_id=?")
+            params.append(video_id)
+        else:
+            eligible_statuses = {
+                "download": ("selected", "failed"),
+                "describe": ("downloaded", "failed"),
+                "publish": ("ready_to_publish", "failed"),
+            }.get(job_type, ("failed",))
+            placeholders = ",".join("?" for _ in eligible_statuses)
+            filters.append(f"videos.status IN ({placeholders})")
+            params.extend(eligible_statuses)
+
+        row = self.conn.execute(
+            f"""
+            SELECT jobs.* FROM jobs
+            JOIN videos ON videos.video_id = jobs.video_id
+            WHERE {" AND ".join(filters)}
+            ORDER BY jobs.id ASC
+            LIMIT 1
+            """,
+            params,
+        ).fetchone()
+        if not row:
+            return None
+
+        job_id = int(row["id"])
+        updated = self.conn.execute(
+            """
+            UPDATE jobs
+            SET locked_at=CURRENT_TIMESTAMP, lock_owner=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+              AND status='pending'
+              AND (next_run_at IS NULL OR datetime(next_run_at) <= datetime('now'))
+              AND (locked_at IS NULL OR datetime(locked_at) <= datetime('now', ?))
+            """,
+            (worker_id, job_id, lease_modifier),
+        )
+        if updated.rowcount != 1:
+            self.conn.rollback()
+            return None
+        self.create_event(
+            row["video_id"],
+            job_id,
+            "core",
+            "job_claimed",
+            f"Job claimed by {worker_id}",
+            {"worker_id": worker_id, "lease_seconds": lease_seconds},
+        )
+        self.conn.commit()
+        return self.get_job(job_id)
+
     def update_job_status(
         self,
         job_id: int,
@@ -574,7 +656,8 @@ class Repository:
             self.conn.execute(
                 """
                 UPDATE jobs
-                SET status=?, finished_at=CURRENT_TIMESTAMP, error=?, error_type=?, next_run_at=?, updated_at=CURRENT_TIMESTAMP
+                SET status=?, finished_at=CURRENT_TIMESTAMP, error=?, error_type=?, next_run_at=?,
+                    locked_at=NULL, lock_owner='', updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
                 """,
                 (status, error, error_type, next_run_at, job_id),
@@ -606,7 +689,8 @@ class Repository:
         self.conn.execute(
             """
             UPDATE jobs
-            SET status='pending', error=?, error_type=?, next_run_at=?, updated_at=CURRENT_TIMESTAMP
+            SET status='pending', error=?, error_type=?, next_run_at=?,
+                locked_at=NULL, lock_owner='', updated_at=CURRENT_TIMESTAMP
             WHERE id=?
             """,
             (error, error_type, next_run_at, job_id),
@@ -624,6 +708,101 @@ class Repository:
         if result is None:
             raise RuntimeError(f"Job retry schedule failed: {job_id}")
         return result
+
+    def recover_stale_jobs(self, worker_id: str, lease_seconds: int) -> dict[str, Any]:
+        lease_seconds = max(1, int(lease_seconds))
+        cutoff = (datetime.now(UTC) - timedelta(seconds=lease_seconds)).strftime("%Y-%m-%d %H:%M:%S")
+        recovered_jobs: list[dict[str, Any]] = []
+        recovered_videos: list[dict[str, Any]] = []
+
+        locked_pending = self.conn.execute(
+            """
+            SELECT * FROM jobs
+            WHERE status='pending' AND locked_at IS NOT NULL AND datetime(locked_at) <= datetime(?)
+            ORDER BY id ASC
+            """,
+            (cutoff,),
+        ).fetchall()
+        for row in locked_pending:
+            self.conn.execute(
+                "UPDATE jobs SET locked_at=NULL, lock_owner='', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (row["id"],),
+            )
+            recovered_jobs.append({"job_id": int(row["id"]), "job_type": row["job_type"], "status": "pending"})
+            self.create_event(
+                row["video_id"],
+                int(row["id"]),
+                "worker",
+                "job_lock_released",
+                "Stale pending job lock released",
+                {"worker_id": worker_id, "previous_owner": row["lock_owner"], "locked_at": row["locked_at"]},
+            )
+
+        running = self.conn.execute(
+            """
+            SELECT * FROM jobs
+            WHERE status='running'
+              AND (locked_at IS NULL OR datetime(locked_at) <= datetime(?))
+            ORDER BY id ASC
+            """,
+            (cutoff,),
+        ).fetchall()
+        target_statuses = {
+            "download": "selected",
+            "describe": "downloaded",
+            "publish": "ready_to_publish",
+        }
+        for row in running:
+            job_id = int(row["id"])
+            video_id = str(row["video_id"] or "")
+            job_type = str(row["job_type"])
+            self.conn.execute(
+                """
+                UPDATE jobs
+                SET status='pending', locked_at=NULL, lock_owner='', updated_at=CURRENT_TIMESTAMP
+                WHERE id=?
+                """,
+                (job_id,),
+            )
+            recovered_jobs.append({"job_id": job_id, "job_type": job_type, "status": "running"})
+            self.create_event(
+                video_id or None,
+                job_id,
+                "worker",
+                "stale_job_recovered",
+                "Stale running job recovered to pending",
+                {"worker_id": worker_id, "previous_owner": row["lock_owner"], "locked_at": row["locked_at"]},
+            )
+
+            target_status = target_statuses.get(job_type)
+            if video_id and target_status:
+                video = self.get_video(video_id)
+                if video and str(video["status"]) in {"downloading", "describing", "publishing"}:
+                    old_status = str(video["status"])
+                    self.conn.execute(
+                        """
+                        UPDATE videos
+                        SET status=?, updated_at=CURRENT_TIMESTAMP
+                        WHERE video_id=?
+                        """,
+                        (target_status, video_id),
+                    )
+                    recovered_videos.append({"video_id": video_id, "from": old_status, "to": target_status})
+                    self.create_event(
+                        video_id,
+                        job_id,
+                        "worker",
+                        "stale_video_recovered",
+                        f"Stale video recovered: {old_status} -> {target_status}",
+                        {"from": old_status, "to": target_status, "worker_id": worker_id},
+                    )
+
+        self.conn.commit()
+        return {
+            "recovered_jobs": recovered_jobs,
+            "recovered_videos": recovered_videos,
+            "count": len(recovered_jobs),
+        }
 
     def create_event(
         self,

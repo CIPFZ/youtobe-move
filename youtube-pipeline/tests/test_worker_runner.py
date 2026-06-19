@@ -22,6 +22,7 @@ class WorkerRunnerTests(unittest.TestCase):
             worker_enable_publish=False,
             worker_publish_dry_run=True,
             worker_interval_seconds=1,
+            job_lease_seconds=1800,
         )
         self.addCleanup(self.temp_dir.cleanup)
 
@@ -41,8 +42,8 @@ class WorkerRunnerTests(unittest.TestCase):
             result = run_worker_once(self.config)
 
         self.assertEqual(result["status"], "ok")
-        self.assertEqual([step["step"] for step in result["steps"]], ["discovery", "download", "describe", "publish"])
-        self.assertEqual(result["steps"][3]["result"]["reason"], "worker_publish_disabled")
+        self.assertEqual([step["step"] for step in result["steps"]], ["recover", "discovery", "download", "describe", "publish"])
+        self.assertEqual(result["steps"][4]["result"]["reason"], "worker_publish_disabled")
         publish_next.assert_not_called()
         event_types = [event["event_type"] for event in self._events()]
         self.assertIn("worker_run_started", event_types)
@@ -58,7 +59,7 @@ class WorkerRunnerTests(unittest.TestCase):
             result = run_worker_once(self.config, enable_publish=True, publish_dry_run=True)
 
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["steps"][3]["result"]["status"], "dry_run")
+        self.assertEqual(result["steps"][4]["result"]["status"], "dry_run")
         publish_next.assert_called_once()
 
     def test_run_worker_once_records_step_failure_and_continues(self):
@@ -72,8 +73,8 @@ class WorkerRunnerTests(unittest.TestCase):
             result = run_worker_once(self.config)
 
         self.assertEqual(result["status"], "failed")
-        self.assertFalse(result["steps"][1]["ok"])
-        self.assertEqual(result["steps"][2]["result"]["status"], "empty")
+        self.assertFalse(result["steps"][2]["ok"])
+        self.assertEqual(result["steps"][3]["result"]["status"], "empty")
         publish_next.assert_not_called()
 
     def test_run_worker_once_skips_discovery_when_queue_is_large_enough(self):
@@ -95,8 +96,8 @@ class WorkerRunnerTests(unittest.TestCase):
         ):
             result = run_worker_once(self.config)
 
-        self.assertEqual(result["steps"][0]["result"]["status"], "skipped")
-        self.assertEqual(result["steps"][0]["result"]["reason"], "queue_above_threshold")
+        self.assertEqual(result["steps"][1]["result"]["status"], "skipped")
+        self.assertEqual(result["steps"][1]["result"]["reason"], "queue_above_threshold")
         discover_videos.assert_not_called()
 
 

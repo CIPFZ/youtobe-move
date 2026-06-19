@@ -43,6 +43,7 @@ class Config:
         self.worker_discovery_source = os.environ["WORKER_DISCOVERY_SOURCE"].strip() or None
         self.worker_enable_publish = os.environ["WORKER_ENABLE_PUBLISH"].strip().lower() in {"1", "true", "yes", "on"}
         self.worker_publish_dry_run = os.environ["WORKER_PUBLISH_DRY_RUN"].strip().lower() in {"1", "true", "yes", "on"}
+        self.job_lease_seconds = int(os.environ["JOB_LEASE_SECONDS"])
         self.job_retry_base_seconds = int(os.environ["JOB_RETRY_BASE_SECONDS"])
         self.job_retry_max_seconds = int(os.environ["JOB_RETRY_MAX_SECONDS"])
         self.publish_mode = os.environ["PUBLISH_MODE"]

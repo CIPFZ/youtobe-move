@@ -89,6 +89,42 @@ class CoreRepositoryTests(unittest.TestCase):
         pending = repo.get_pending_job("download")
         self.assertEqual(pending["id"], future_job_id)
 
+    def test_claim_pending_job_sets_lock_and_blocks_second_worker(self):
+        repo = self._repo()
+        repo.upsert_video("abc123def45", "https://www.youtube.com/watch?v=abc123def45")
+        job_id = repo.create_job("download", video_id="abc123def45")
+
+        claimed = repo.claim_pending_job("download", "worker-a", lease_seconds=1800)
+        second = repo.claim_pending_job("download", "worker-b", lease_seconds=1800)
+
+        self.assertEqual(claimed["id"], job_id)
+        self.assertEqual(claimed["lock_owner"], "worker-a")
+        self.assertTrue(claimed["locked_at"])
+        self.assertIsNone(second)
+
+    def test_recover_stale_running_job_restores_video_and_job(self):
+        repo = self._repo()
+        repo.upsert_video("abc123def45", "https://www.youtube.com/watch?v=abc123def45")
+        job_id = repo.create_job("download", video_id="abc123def45")
+        claimed = repo.claim_pending_job("download", "worker-a", lease_seconds=1800)
+        repo.update_job_status(int(claimed["id"]), "running")
+        repo.update_video_status("abc123def45", "downloading")
+        repo.conn.execute(
+            "UPDATE jobs SET locked_at='2000-01-01 00:00:00', lock_owner='worker-a' WHERE id=?",
+            (job_id,),
+        )
+        repo.conn.commit()
+
+        result = repo.recover_stale_jobs("worker-b", lease_seconds=1800)
+        job = repo.get_job(job_id)
+        video = repo.get_video("abc123def45")
+
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(job["status"], "pending")
+        self.assertIsNone(job["locked_at"])
+        self.assertEqual(job["lock_owner"], "")
+        self.assertEqual(video["status"], "selected")
+
 
 if __name__ == "__main__":
     unittest.main()
