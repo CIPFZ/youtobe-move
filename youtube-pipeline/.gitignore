@@ -16,6 +16,7 @@ Thumbs.db
 .env
 runtime/
 logs/
+web/node_modules/
 
 *.tmp
 *.log

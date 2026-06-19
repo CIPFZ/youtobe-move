@@ -43,6 +43,35 @@ youtube-pipeline web
 
 默认地址为 `http://127.0.0.1:8505`，可通过 `.env` 中的 `WEB_HOST`、`WEB_PORT` 修改。
 
+开发 Web 时使用自动重启模式：
+
+```bash
+youtube-pipeline web-dev
+```
+
+`web-dev` 会启动 Python API 和 Vite React 前端。默认 Python API 使用 `WEB_PORT`，Vite 使用 `WEB_PORT + 1`，例如：
+
+```text
+API: http://127.0.0.1:8505
+UI:  http://127.0.0.1:8506
+```
+
+前端技术栈为 Vite + React + lucide-react。首次开发前安装依赖：
+
+```bash
+cd youtube-pipeline/web
+npm install
+```
+
+构建生产静态文件：
+
+```bash
+cd youtube-pipeline/web
+npm run build
+```
+
+普通 `youtube-pipeline web` 会优先托管 `web/dist`，如果没有构建产物则回退到旧的 `app/web_static`。
+
 运行一轮自动队列：
 
 ```bash

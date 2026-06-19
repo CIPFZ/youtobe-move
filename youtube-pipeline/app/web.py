@@ -16,7 +16,7 @@ from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.discovery import discover_videos
 from app.download_service import download_next, download_video_from_db
-from app.operations import pipeline_status, retry_video, skip_video
+from app.operations import add_video_url, add_video_urls, pipeline_status, retry_video, skip_video
 from app.publish_service import describe_video, publish_next, publish_video, review_publish_draft
 from app.worker import run_worker_once
 from app.youtube_api import parse_video_id
@@ -24,7 +24,10 @@ from app.youtube_api import parse_video_id
 
 logger = logging.getLogger("youtube-pipeline")
 
-STATIC_DIR = Path(__file__).with_name("web_static")
+PACKAGE_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = PACKAGE_DIR.parent
+REACT_DIST_DIR = PROJECT_DIR / "web" / "dist"
+LEGACY_STATIC_DIR = PACKAGE_DIR / "web_static"
 
 
 class WebError(Exception):
@@ -91,27 +94,46 @@ def _video_detail(config: Config, video_id: str) -> dict[str, Any]:
 
 def _list_videos(config: Config, query: dict[str, list[str]]) -> dict[str, Any]:
     status = (query.get("status") or [""])[0] or None
+    draft_status = (query.get("draft_status") or [""])[0] or None
+    error_type = (query.get("error_type") or [""])[0] or None
     limit = _parse_int((query.get("limit") or [""])[0], 50, minimum=1, maximum=200)
     offset = _parse_int((query.get("offset") or [""])[0], 0, minimum=0, maximum=100000)
     with connect(config.db_path) as conn:
         init_schema(conn)
         repo = Repository(conn)
-        videos = repo.list_videos(status=status, limit=limit, offset=offset)
+        fetch_limit = limit if not (draft_status or error_type) else 500
+        videos = repo.list_videos(status=status, limit=fetch_limit, offset=offset)
         rows: list[dict[str, Any]] = []
         for video in videos:
             video_id = str(video["video_id"])
+            latest_download_job = repo.get_latest_job(video_id, "download")
+            latest_describe_job = repo.get_latest_job(video_id, "describe")
+            latest_publish_job = repo.get_latest_job(video_id, "publish")
+            latest_jobs = [job for job in (latest_download_job, latest_describe_job, latest_publish_job) if job]
+            publish_draft = repo.get_publish_draft(video_id, "bilibili")
+            if draft_status and str((publish_draft or {}).get("status") or "") != draft_status:
+                continue
+            if error_type and not any(str(job.get("error_type") or "") == error_type for job in latest_jobs):
+                continue
             rows.append(
                 {
                     "video": video,
                     "media_files": repo.get_media_files(video_id),
-                    "publish_draft": repo.get_publish_draft(video_id, "bilibili"),
-                    "latest_download_job": repo.get_latest_job(video_id, "download"),
-                    "latest_describe_job": repo.get_latest_job(video_id, "describe"),
-                    "latest_publish_job": repo.get_latest_job(video_id, "publish"),
+                    "publish_draft": publish_draft,
+                    "latest_download_job": latest_download_job,
+                    "latest_describe_job": latest_describe_job,
+                    "latest_publish_job": latest_publish_job,
                     "publish_records": repo.list_publish_records(video_id),
                 }
             )
-    return {"videos": rows, "limit": limit, "offset": offset, "status": status}
+    return {
+        "videos": rows[:limit],
+        "limit": limit,
+        "offset": offset,
+        "status": status,
+        "draft_status": draft_status,
+        "error_type": error_type,
+    }
 
 
 def _media_file_response(config: Config, video_id: str, file_type: str) -> tuple[Path, str]:
@@ -190,13 +212,14 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             if method == "GET" and path == "/":
-                self._send_static(STATIC_DIR / "index.html")
+                self._send_static(_static_root() / "index.html")
                 return
-            if method == "GET" and path.startswith("/static/"):
-                relative = Path(unquote(path.removeprefix("/static/")))
+            if method == "GET" and (path.startswith("/static/") or path.startswith("/assets/")):
+                prefix = "/static/" if path.startswith("/static/") else "/"
+                relative = Path(unquote(path.removeprefix(prefix)))
                 if relative.is_absolute() or ".." in relative.parts:
                     raise WebError(HTTPStatus.BAD_REQUEST, "Invalid static path")
-                self._send_static(STATIC_DIR / relative)
+                self._send_static(_static_root() / relative)
                 return
             if path.startswith("/api/"):
                 self._handle_api(method, path, query)
@@ -246,6 +269,26 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
 
         if method == "GET" and path == "/api/videos":
             self._send_json(_list_videos(self.config, query))
+            return
+
+        if method == "POST" and path == "/api/videos/add-url":
+            url = str(body.get("url") or "").strip()
+            if not url:
+                raise WebError(HTTPStatus.BAD_REQUEST, "url is required")
+            status = str(body.get("status") or "selected")
+            self._send_json(add_video_url(url, self.config, status=status, source="web"))
+            return
+
+        if method == "POST" and path == "/api/videos/add-urls":
+            raw_urls = body.get("urls")
+            if isinstance(raw_urls, str):
+                urls = [line.strip() for line in raw_urls.splitlines()]
+            elif isinstance(raw_urls, list):
+                urls = [str(url).strip() for url in raw_urls]
+            else:
+                raise WebError(HTTPStatus.BAD_REQUEST, "urls must be a string or list")
+            status = str(body.get("status") or "selected")
+            self._send_json(add_video_urls(urls, self.config, status=status, source="web"))
             return
 
         if method == "POST" and path == "/api/discover":
@@ -344,3 +387,10 @@ def run_web_server(config: Config, host: str | None = None, port: int | None = N
         server.serve_forever()
     finally:
         server.server_close()
+
+
+def _static_root() -> Path:
+    index_path = REACT_DIST_DIR / "index.html"
+    if index_path.exists():
+        return REACT_DIST_DIR
+    return LEGACY_STATIC_DIR

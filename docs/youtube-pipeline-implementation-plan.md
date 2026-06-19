@@ -876,6 +876,37 @@ P9.1 未完成：
 - 配置页最终交互设计；当前是最小可用面板。
 - 运行中 worker 的热重载机制；当前 Web server 会重载自身 config，worker 进程下一轮是否读取取决于启动方式。
 
+P9.2 队列管理已完成基础版：
+
+- 前端已切换为 Vite + React + lucide-react。
+- `web-dev` 现在同时启动 Python API 和 Vite dev server，Vite 负责前端 HMR。
+- `web/dist` build 产物可由普通 `youtube-pipeline web` 托管。
+- 新增 `add_video_url()` / `add_video_urls()`，统一处理手动 URL 入队。
+- CLI `add-url` 已切换到同一套入队逻辑。
+- 手动添加时规范化 source URL 为 `https://www.youtube.com/watch?v=<video_id>`。
+- `video_id` 已存在时返回 `exists`，不重复创建视频和 download job。
+- 新视频进入 `selected` 并创建 pending download job。
+- 新增 Web API：
+  - `POST /api/videos/add-url`
+  - `POST /api/videos/add-urls`
+- Web 队列页新增批量 URL 输入框。
+- Web 队列页新增筛选：
+  - `status`
+  - `draft_status`
+  - `error_type`
+- 单元测试覆盖：
+  - 单 URL 入队。
+  - 重复 URL 不重复建 job。
+  - 批量 URL 部分失败。
+  - Web 列表按 draft/error 筛选。
+
+P9.2 未完成：
+
+- 优先级字段。
+- 来源标签字段。
+- 更完整的批量操作，如批量 approve、批量 retry。
+- 列表筛选目前是 Web 层基础实现，后续数据量变大时需要下沉到 repository SQL。
+
 ### 风险点
 
 - 不要在 P9 过早引入复杂前端工程。

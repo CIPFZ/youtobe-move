@@ -6,6 +6,7 @@ from app.config import Config
 from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
+from app.youtube_api import parse_video_id
 
 
 RETRY_TARGETS = {
@@ -13,6 +14,69 @@ RETRY_TARGETS = {
     "describe": "downloaded",
     "publish": "ready_to_publish",
 }
+
+
+def canonical_youtube_url(video_id: str) -> str:
+    return f"https://www.youtube.com/watch?v={video_id}"
+
+
+def add_video_url(url: str, config: Config, status: str = "selected", source: str = "manual") -> dict[str, Any]:
+    video_id = parse_video_id(url)
+    source_url = canonical_youtube_url(video_id)
+    with connect(config.db_path) as conn:
+        init_schema(conn)
+        repo = Repository(conn)
+        existing = repo.get_video(video_id)
+        if existing:
+            latest_download_job = repo.get_latest_job(video_id, "download")
+            repo.create_event(
+                video_id,
+                None,
+                "operations",
+                "manual_add_duplicate",
+                "Manual URL already exists",
+                {"source": source, "input_url": url, "source_url": source_url},
+            )
+            conn.commit()
+            return {
+                "status": "exists",
+                "video": existing,
+                "job_id": int(latest_download_job["id"]) if latest_download_job else None,
+            }
+
+        video = repo.upsert_video(video_id=video_id, source_url=source_url, status=status)
+        job_id = repo.create_job("download", video_id=video_id, payload={"url": source_url, "source": source})
+        repo.create_event(
+            video_id,
+            job_id,
+            "operations",
+            "manual_add_created",
+            "Manual URL added to queue",
+            {"source": source, "input_url": url, "source_url": source_url},
+        )
+        conn.commit()
+        return {"status": "created", "video": video, "job_id": job_id}
+
+
+def add_video_urls(urls: list[str], config: Config, status: str = "selected", source: str = "manual") -> dict[str, Any]:
+    results: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
+    for url in urls:
+        cleaned = str(url or "").strip()
+        if not cleaned:
+            continue
+        try:
+            results.append(add_video_url(cleaned, config, status=status, source=source))
+        except Exception as exc:
+            errors.append({"url": cleaned, "error": str(exc)})
+    return {
+        "status": "ok" if not errors else "partial",
+        "created_count": sum(1 for item in results if item["status"] == "created"),
+        "exists_count": sum(1 for item in results if item["status"] == "exists"),
+        "error_count": len(errors),
+        "results": results,
+        "errors": errors,
+    }
 
 
 def pipeline_status(config: Config, events_limit: int = 20) -> dict[str, Any]:

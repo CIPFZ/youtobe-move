@@ -10,10 +10,11 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.discovery import discover_videos
+from app.dev_server import run_web_dev_server
 from app.download_service import download_next, download_video_from_db
 from app.downloader import download_video_assets
 from app.logger import setup_logger
-from app.operations import pipeline_status, retry_video, skip_video
+from app.operations import add_video_url, pipeline_status, retry_video, skip_video
 from app.pipeline import run_download_publish
 from app.publish_service import describe_video, publish_next, publish_video, review_publish_draft
 from app.publisher import publish_to_bilibili
@@ -114,6 +115,11 @@ def build_parser() -> argparse.ArgumentParser:
     web_parser.add_argument("--host", help="Bind host. Defaults to WEB_HOST.")
     web_parser.add_argument("--port", type=int, help="Bind port. Defaults to WEB_PORT.")
 
+    web_dev_parser = subparsers.add_parser("web-dev", help="Run the Web UI with development auto-restart.")
+    web_dev_parser.add_argument("--host", help="Bind host. Defaults to WEB_HOST.")
+    web_dev_parser.add_argument("--port", type=int, help="Bind port. Defaults to WEB_PORT.")
+    web_dev_parser.add_argument("--poll", type=float, default=1.0, help="File watch polling interval in seconds.")
+
     publish_dir_parser = subparsers.add_parser("publish-dir", help="Publish an existing downloaded directory to Bilibili.")
     publish_dir_parser.add_argument("data_dir", type=Path, help="Directory containing meta.json and <id>_merge.mp4")
     publish_dir_parser.add_argument("--tid", type=int, help="Bilibili category id. Defaults to BILIBILI_TID.")
@@ -137,14 +143,7 @@ def main() -> int:
                 init_schema(conn)
             result = {"db_path": str(config.db_path), "initialized": True}
         elif args.command == "add-url":
-            video_id = parse_video_id(args.url)
-            with connect(config.db_path) as conn:
-                init_schema(conn)
-                repo = Repository(conn)
-                video = repo.upsert_video(video_id=video_id, source_url=args.url, status=args.status)
-                repo.create_job("download", video_id=video_id, payload={"url": args.url})
-                conn.commit()
-            result = {"video": video}
+            result = add_video_url(args.url, config, status=args.status, source="cli")
         elif args.command == "list":
             with connect(config.db_path) as conn:
                 init_schema(conn)
@@ -246,6 +245,9 @@ def main() -> int:
             logger.info("Worker loop stopped: status=%s", result["status"])
         elif args.command == "web":
             run_web_server(config, host=args.host, port=args.port)
+            return 0
+        elif args.command == "web-dev":
+            run_web_dev_server(config, host=args.host, port=args.port, poll_seconds=args.poll)
             return 0
         elif args.command == "publish-dir":
             logger.info("Publish-dir job started: data_dir=%s", args.data_dir)

@@ -320,6 +320,24 @@
         font-size: 12px;
       }
 
+      .add-url-box {
+        display: grid;
+        gap: 8px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 76px;
+        resize: vertical;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px;
+        font: inherit;
+      }
+
       .events {
         max-height: 240px;
         overflow: auto;
@@ -420,9 +438,30 @@
               <option value="failed">failed</option>
               <option value="skipped">skipped</option>
             </select>
+            <select id="draftStatusFilter">
+              <option value="">草稿全部</option>
+              <option value="pending">pending</option>
+              <option value="approved">approved</option>
+              <option value="rejected">rejected</option>
+            </select>
+            <select id="errorTypeFilter">
+              <option value="">错误全部</option>
+              <option value="youtube_403">youtube_403</option>
+              <option value="network_error">network_error</option>
+              <option value="llm_failed">llm_failed</option>
+              <option value="publish_failed">publish_failed</option>
+              <option value="unknown">unknown</option>
+            </select>
           </div>
         </div>
         <div id="stats" class="stats"></div>
+        <div class="add-url-box">
+          <textarea id="addUrls" placeholder="输入 YouTube 链接，支持一行一个"></textarea>
+          <div class="toolbar">
+            <button id="addUrlButton" class="primary">添加到队列</button>
+            <span class="muted">重复 video_id 不会重复入库。</span>
+          </div>
+        </div>
         <div id="videoList" class="video-list"></div>
       </section>
 
@@ -455,6 +494,8 @@
     <script>
       const state = {
         status: "",
+        draftStatus: "",
+        errorType: "",
         videos: [],
         selectedId: "",
         config: null,
@@ -792,9 +833,13 @@
       }
 
       async function loadAll(keepSelected = state.selectedId) {
+        const params = new URLSearchParams({ limit: "80" });
+        if (state.status) params.set("status", state.status);
+        if (state.draftStatus) params.set("draft_status", state.draftStatus);
+        if (state.errorType) params.set("error_type", state.errorType);
         const [status, list] = await Promise.all([
           api("/api/status?events_limit=5"),
-          api(`/api/videos?limit=80${state.status ? `&status=${encodeURIComponent(state.status)}` : ""}`),
+          api(`/api/videos?${params.toString()}`),
         ]);
         renderStats(status);
         state.videos = list.videos;
@@ -813,6 +858,33 @@
       $("statusFilter").addEventListener("change", (event) => {
         state.status = event.target.value;
         loadAll("").catch((error) => showToast(error.message));
+      });
+      $("draftStatusFilter").addEventListener("change", (event) => {
+        state.draftStatus = event.target.value;
+        loadAll("").catch((error) => showToast(error.message));
+      });
+      $("errorTypeFilter").addEventListener("change", (event) => {
+        state.errorType = event.target.value;
+        loadAll("").catch((error) => showToast(error.message));
+      });
+      $("addUrlButton").addEventListener("click", async () => {
+        const urls = $("addUrls").value.trim();
+        if (!urls) {
+          showToast("请输入至少一个 YouTube 链接。");
+          return;
+        }
+        try {
+          const result = await api("/api/videos/add-urls", {
+            method: "POST",
+            body: JSON.stringify({ urls }),
+          });
+          $("addUrls").value = "";
+          showToast(`添加完成：created=${result.created_count}, exists=${result.exists_count}, errors=${result.error_count}`);
+          const firstCreated = (result.results || []).find((item) => item.status === "created");
+          await loadAll(firstCreated?.video?.video_id || "");
+        } catch (error) {
+          showToast(error.message);
+        }
       });
       $("workerRun").addEventListener("click", async () => {
         try {
