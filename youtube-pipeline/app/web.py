@@ -15,6 +15,7 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.discovery import discover_videos
+from app.discovery.service import preview_discovery_source
 from app.discovery.source_config import (
     add_discovery_source,
     delete_discovery_source,
@@ -395,6 +396,8 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
                     result = update_discovery_source(self.config, index, body)
                 elif method == "DELETE":
                     result = delete_discovery_source(self.config, index)
+                elif method == "POST" and body.get("action") == "preview":
+                    result = preview_discovery_source(self.config, index)
                 else:
                     raise WebError(HTTPStatus.NOT_FOUND, "Not found")
             except (ValueError, IndexError) as exc:

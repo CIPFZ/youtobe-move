@@ -11,7 +11,7 @@ from app.core.schema import init_schema
 from app.discovery.filters import filter_candidate
 from app.discovery.models import VideoCandidate
 from app.discovery.scoring import sort_candidates
-from app.discovery.sources import fetch_candidates
+from app.discovery.sources import fetch_candidates, fetch_candidates_for_source, load_discovery_sources
 
 
 logger = logging.getLogger("youtube-pipeline")
@@ -123,4 +123,40 @@ def discover_videos(config: Config, source_type: str | None = None, dry_run: boo
         "accepted": accepted,
         "rejected": rejected,
         "inserted": inserted,
+    }
+
+
+def preview_discovery_source(config: Config, index: int) -> dict[str, Any]:
+    sources = load_discovery_sources(config)
+    if not (0 <= index < len(sources)):
+        raise IndexError(f"Discovery source index out of range: {index}")
+
+    source = sources[index]
+    candidates = sort_candidates(fetch_candidates_for_source(source, config))
+    accepted: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    with connect(config.db_path) as conn:
+        init_schema(conn)
+        repo = Repository(conn)
+        for candidate in candidates:
+            summary = candidate_summary(candidate)
+            if candidate.video_id in seen:
+                rejected.append({"candidate": summary, "reason": "duplicate_in_run"})
+                continue
+            seen.add(candidate.video_id)
+            result = filter_candidate(candidate, repo, config)
+            if result.accepted:
+                accepted.append(summary)
+            else:
+                rejected.append({"candidate": summary, "reason": result.reason})
+
+    return {
+        "status": "ok",
+        "source": {"index": index, "type": source.type, "name": source.name, "params": source.params},
+        "candidate_count": len(candidates),
+        "accepted_count": len(accepted),
+        "rejected_count": len(rejected),
+        "accepted": accepted,
+        "rejected": rejected,
     }

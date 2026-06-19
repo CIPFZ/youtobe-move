@@ -136,6 +136,7 @@ function App() {
   const [config, setConfig] = useState(null);
   const [storage, setStorage] = useState(null);
   const [discoverySources, setDiscoverySources] = useState([]);
+  const [sourcePreview, setSourcePreview] = useState(null);
   const [filters, setFilters] = useState({ status: "", draftStatus: "", errorType: "" });
   const [selectedVideoIds, setSelectedVideoIds] = useState([]);
   const [addUrls, setAddUrls] = useState("");
@@ -361,6 +362,23 @@ function App() {
     }
   }
 
+  async function previewDiscoverySource(index) {
+    if (index === null || index === undefined) {
+      showToast("请先选择发现源。");
+      return;
+    }
+    try {
+      const result = await api(`/api/discovery/sources/${index}`, {
+        method: "POST",
+        body: JSON.stringify({ action: "preview" }),
+      });
+      setSourcePreview(result);
+      showToast(`预览完成：accepted=${result.accepted_count}, rejected=${result.rejected_count}`);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
+
   return (
     <>
       <header>
@@ -482,8 +500,10 @@ function App() {
           </div>
           <DiscoverySourcesPanel
             sources={discoverySources}
+            preview={sourcePreview}
             onSave={saveDiscoverySource}
             onDelete={deleteDiscoverySource}
+            onPreview={previewDiscoverySource}
           />
         </section>
       </main>
@@ -538,7 +558,7 @@ function formToSource(form) {
   return source;
 }
 
-function DiscoverySourcesPanel({ sources, onSave, onDelete }) {
+function DiscoverySourcesPanel({ sources, preview, onSave, onDelete, onPreview }) {
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [form, setForm] = useState(emptyDiscoveryForm);
 
@@ -620,11 +640,43 @@ function DiscoverySourcesPanel({ sources, onSave, onDelete }) {
         ) : null}
         <div className="toolbar">
           <IconButton icon={Save} className="primary" onClick={submit}>{selectedIndex === null ? "新增" : "保存"}</IconButton>
+          <IconButton icon={Search} disabled={selectedIndex === null} onClick={() => onPreview(selectedIndex)}>预览</IconButton>
           <button onClick={resetForm}>清空</button>
           <button className="danger" disabled={selectedIndex === null} onClick={() => onDelete(selectedIndex)}>删除</button>
         </div>
+        <DiscoveryPreview preview={preview} />
       </div>
     </div>
+  );
+}
+
+function DiscoveryPreview({ preview }) {
+  if (!preview) return <div className="muted">选择发现源后可执行预览。</div>;
+  const accepted = preview.accepted || [];
+  const rejected = preview.rejected || [];
+  return (
+    <section className="preview-box">
+      <h2>预览结果</h2>
+      <div className="badges">
+        <span className="badge">候选 {preview.candidate_count}</span>
+        <span className="badge ready_to_publish">通过 {preview.accepted_count}</span>
+        <span className="badge failed">拒绝 {preview.rejected_count}</span>
+      </div>
+      <div className="preview-list">
+        {accepted.slice(0, 8).map((item) => (
+          <div className="preview-row" key={`accepted-${item.video_id}`}>
+            <b>{item.title || item.video_id}</b>
+            <span>{item.channel || "-"} · {fmtDuration(item.duration)} · {fmtCount(item.view_count)} views</span>
+          </div>
+        ))}
+        {rejected.slice(0, 8).map((item) => (
+          <div className="preview-row rejected" key={`rejected-${item.candidate?.video_id}`}>
+            <b>{item.candidate?.title || item.candidate?.video_id}</b>
+            <span>{item.reason}</span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -446,6 +446,45 @@ textarea {
   font-size: 12px;
 }
 
+.preview-box {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.preview-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.preview-row {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid #b7dfc9;
+  border-radius: 6px;
+}
+
+.preview-row.rejected {
+  border-color: #f3b7b2;
+}
+
+.preview-row b,
+.preview-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .actions {
   display: flex;
   gap: 8px;

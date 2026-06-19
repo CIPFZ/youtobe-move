@@ -9,7 +9,7 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.discovery.models import DiscoverySource, VideoCandidate
-from app.discovery.service import discover_videos
+from app.discovery.service import discover_videos, preview_discovery_source
 from app.discovery.sources import fetch_candidates_for_source, load_discovery_sources
 
 
@@ -77,6 +77,24 @@ class DiscoveryTests(unittest.TestCase):
 
         self.assertEqual(result["accepted_count"], 1)
         self.assertEqual(result["inserted_count"], 0)
+        with connect(self.db_path) as conn:
+            init_schema(conn)
+            repo = Repository(conn)
+            self.assertIsNone(repo.get_video("abc123def45"))
+
+    def test_preview_discovery_source_does_not_insert(self):
+        candidates = [
+            self._candidate(video_id="abc123def45"),
+            self._candidate(video_id="small123456", view_count=99),
+        ]
+
+        with patch("app.discovery.service.fetch_candidates_for_source", return_value=candidates):
+            result = preview_discovery_source(self.config, 0)
+
+        self.assertEqual(result["source"]["index"], 0)
+        self.assertEqual(result["candidate_count"], 2)
+        self.assertEqual(result["accepted_count"], 1)
+        self.assertEqual(result["rejected"][0]["reason"], "view_count_too_low")
         with connect(self.db_path) as conn:
             init_schema(conn)
             repo = Repository(conn)

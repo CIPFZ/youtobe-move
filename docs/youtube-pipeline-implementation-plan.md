@@ -1016,24 +1016,28 @@ P9.5 发现源管理已完成基础版：
   - `PATCH /api/discovery/sources`
   - `PATCH /api/discovery/sources/<index>`
   - `DELETE /api/discovery/sources/<index>`
+  - `POST /api/discovery/sources/<index>` with `{"action":"preview"}`
 - 发现源变更复用 `config_service.update_config()` 写回 `.env`，并写入配置审计事件。
+- 单个 source preview 复用发现过滤逻辑，但不写 events、不入库。
 - Web 页面新增发现源管理面板：
   - 列表查看现有 source。
   - 新增 source。
   - 编辑 source。
   - 删除 source。
+  - 单 source dry-run 预览。
   - 表单按 source type 显示不同字段。
 - 单元测试覆盖：
   - 类型字段校验。
   - 列表 index。
   - 新增、更新、删除写回 `.env`。
+  - 单 source preview 不入库。
 
 P9.5 未完成：
 
 - source 启用/禁用字段。
 - source 优先级/权重。
 - source 级别过滤规则。
-- 对单个 source 进行 dry-run 预览并展示候选详情。
+- preview 结果分页和更完整的候选详情展示。
 
 ### 风险点
 
