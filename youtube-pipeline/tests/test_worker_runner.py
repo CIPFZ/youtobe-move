@@ -16,7 +16,10 @@ class WorkerRunnerTests(unittest.TestCase):
         self.db_path = Path(self.temp_dir.name) / "pipeline.db"
         self.config = SimpleNamespace(
             db_path=self.db_path,
+            pipeline_enabled=True,
             worker_enable_discovery=True,
+            worker_enable_download=True,
+            worker_enable_describe=True,
             worker_discovery_min_queue_size=3,
             worker_discovery_source=None,
             worker_enable_publish=False,
@@ -99,6 +102,38 @@ class WorkerRunnerTests(unittest.TestCase):
         self.assertEqual(result["steps"][1]["result"]["status"], "skipped")
         self.assertEqual(result["steps"][1]["result"]["reason"], "queue_above_threshold")
         discover_videos.assert_not_called()
+
+    def test_run_worker_once_skips_steps_when_pipeline_disabled(self):
+        self.config.pipeline_enabled = False
+        with (
+            patch("app.worker.runner.discover_videos") as discover_videos,
+            patch("app.worker.runner.download_next") as download_next,
+            patch("app.worker.runner.describe_next") as describe_next,
+            patch("app.worker.runner.publish_next") as publish_next,
+        ):
+            result = run_worker_once(self.config, enable_publish=True)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual([step["result"]["reason"] for step in result["steps"][1:]], ["pipeline_disabled"] * 4)
+        discover_videos.assert_not_called()
+        download_next.assert_not_called()
+        describe_next.assert_not_called()
+        publish_next.assert_not_called()
+
+    def test_run_worker_once_respects_download_and_describe_switches(self):
+        self.config.worker_enable_download = False
+        self.config.worker_enable_describe = False
+        with (
+            patch("app.worker.runner.discover_videos", return_value={"inserted_count": 0, "accepted_count": 0}),
+            patch("app.worker.runner.download_next") as download_next,
+            patch("app.worker.runner.describe_next") as describe_next,
+        ):
+            result = run_worker_once(self.config)
+
+        self.assertEqual(result["steps"][2]["result"]["reason"], "worker_download_disabled")
+        self.assertEqual(result["steps"][3]["result"]["reason"], "worker_describe_disabled")
+        download_next.assert_not_called()
+        describe_next.assert_not_called()
 
 
 if __name__ == "__main__":

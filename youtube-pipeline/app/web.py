@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
-from app.config import Config
+from app.config import Config, load_config
+from app.config_service import list_config, update_config
 from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
@@ -176,6 +177,9 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         self._handle("POST")
 
+    def do_PATCH(self) -> None:
+        self._handle("PATCH")
+
     def _handle(self, method: str) -> None:
         try:
             parsed = urlparse(self.path)
@@ -205,7 +209,7 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def _handle_api(self, method: str, path: str, query: dict[str, list[str]]) -> None:
-        body = self._read_body() if method == "POST" else {}
+        body = self._read_body() if method in {"POST", "PATCH"} else {}
         parts = [part for part in path.split("/") if part]
 
         if method == "GET" and path == "/api/status":
@@ -221,6 +225,22 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
                 "publish_window_start": self.config.publish_window_start,
                 "publish_window_end": self.config.publish_window_end,
             }
+            self._send_json(result)
+            return
+
+        if method == "GET" and path == "/api/config":
+            self._send_json(list_config(self.config.base_dir))
+            return
+
+        if method == "PATCH" and path == "/api/config":
+            updates = body.get("values", body)
+            if not isinstance(updates, dict):
+                raise WebError(HTTPStatus.BAD_REQUEST, "Config updates must be an object")
+            try:
+                result = update_config(updates, self.config.base_dir, actor="web")
+            except ValueError as exc:
+                raise WebError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
+            self.server.config = load_config()
             self._send_json(result)
             return
 

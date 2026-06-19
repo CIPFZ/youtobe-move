@@ -78,14 +78,31 @@ def run_worker_once(config: Config, enable_publish: bool | None = None, publish_
         "Worker run started",
         {
             "worker_id": worker_id,
+            "pipeline_enabled": getattr(config, "pipeline_enabled", True),
             "job_lease_seconds": getattr(config, "job_lease_seconds", 1800),
             "discovery_enabled": config.worker_enable_discovery,
+            "download_enabled": getattr(config, "worker_enable_download", True),
+            "describe_enabled": getattr(config, "worker_enable_describe", True),
             "publish_enabled": publish_enabled,
             "publish_dry_run": dry_run_publish,
         },
     )
     steps: list[dict[str, Any]] = []
     steps.append(_run_step("recover", lambda: _recover_stale_jobs(config, worker_id)))
+    if not getattr(config, "pipeline_enabled", True):
+        steps.extend(
+            [
+                {"step": "discovery", "ok": True, "result": {"status": "skipped", "reason": "pipeline_disabled"}},
+                {"step": "download", "ok": True, "result": {"status": "skipped", "reason": "pipeline_disabled"}},
+                {"step": "describe", "ok": True, "result": {"status": "skipped", "reason": "pipeline_disabled"}},
+                {"step": "publish", "ok": True, "result": {"status": "skipped", "reason": "pipeline_disabled"}},
+            ]
+        )
+        ok = all(step["ok"] for step in steps)
+        result = {"status": "ok" if ok else "failed", "worker_id": worker_id, "steps": steps}
+        _create_worker_event(config, "worker_run_finished", "Worker run finished", result)
+        return result
+
     if config.worker_enable_discovery:
         steps.append(_run_step("discovery", lambda: _maybe_discover(config)))
     else:
@@ -96,8 +113,26 @@ def run_worker_once(config: Config, enable_publish: bool | None = None, publish_
                 "result": {"status": "skipped", "reason": "worker_discovery_disabled"},
             }
         )
-    steps.append(_run_step("download", lambda: download_next(config, worker_id=worker_id)))
-    steps.append(_run_step("describe", lambda: describe_next(config, worker_id=worker_id)))
+    if getattr(config, "worker_enable_download", True):
+        steps.append(_run_step("download", lambda: download_next(config, worker_id=worker_id)))
+    else:
+        steps.append(
+            {
+                "step": "download",
+                "ok": True,
+                "result": {"status": "skipped", "reason": "worker_download_disabled"},
+            }
+        )
+    if getattr(config, "worker_enable_describe", True):
+        steps.append(_run_step("describe", lambda: describe_next(config, worker_id=worker_id)))
+    else:
+        steps.append(
+            {
+                "step": "describe",
+                "ok": True,
+                "result": {"status": "skipped", "reason": "worker_describe_disabled"},
+            }
+        )
     if publish_enabled:
         steps.append(_run_step("publish", lambda: publish_next(config, dry_run=dry_run_publish, worker_id=worker_id)))
     else:

@@ -749,6 +749,8 @@ POST /api/videos/<video_id>/skip
 
 把当前验证型 Web 改成可长期使用的本地运营管理台。它仍然是内部工具，不做复杂权限系统和重视觉设计，但必须能高效管理发现、下载、文案、发布、失败处理。
 
+详细功能设计见 `docs/youtube-pipeline-web-management-design.md`。
+
 ### 设计原则
 
 - Web 不直接改数据库，所有操作走 service/repository。
@@ -791,13 +793,88 @@ POST /api/videos/<video_id>/skip
    - 展示最近 worker events。
    - 展示 lease/lock 状态。
 
+6. 配置管理
+   - Web 查看和修改常用 `.env` 配置。
+   - 配置按基础路径、YouTube API、下载、LLM、发布、worker/job 分组。
+   - 敏感配置脱敏显示。
+   - 修改配置必须校验并写审计事件。
+
+7. 自动流程调度
+   - 支持启用/暂停整条 pipeline。
+   - 支持 interval 调度。
+   - 支持 cron 调度设计。
+   - 支持分别启用/禁用 discovery、download、describe、publish。
+
+8. 存储管理
+   - 展示下载目录占用。
+   - 配置最大磁盘占用、保留天数、最小剩余空间。
+   - 支持 cleanup dry-run。
+   - 支持手动清理已发布/跳过/失败内容。
+
+9. 手动添加任务
+   - 支持单 URL 添加。
+   - 支持批量 URL 添加。
+   - 自动解析 video_id。
+   - 已存在视频不重复插入，只提示当前状态。
+   - 新任务进入统一队列。
+
+10. 唯一性保护
+    - Web 发布前检查成功发布记录。
+    - 已发布视频禁用真实发布按钮。
+    - `video_id + platform + account` 的成功发布唯一性不可绕过。
+    - publish_records 默认只读，保留审计价值。
+
 ### 验收标准
 
 - 不使用 CLI 也能完成单个视频从查看、草稿编辑、审核到发布预览。
 - 能快速定位失败视频和失败原因。
 - 能看到任务是否在等待延迟重试。
+- 能在 Web 手动添加 YouTube URL 并进入统一队列。
+- 能在 Web 修改常用配置，并对敏感配置脱敏。
+- 能看到磁盘占用并执行清理预览。
+- 已发布视频不能被误重复发布。
 - 真实发布仍必须二次确认。
 - 页面在移动端和桌面端都不出现文本重叠。
+
+### 当前状态
+
+P9.1 配置与开关已完成：
+
+- 新增 `app/config_service.py`。
+- 配置按 group 返回，覆盖 pipeline、publish、download、youtube、discovery、llm、jobs、paths、logging、web。
+- 敏感配置脱敏显示：
+  - `YOUTUBE_API_KEY`
+  - `MINIMAX_ANTHROPIC_API_KEY`
+- `PATCH /api/config` 支持白名单字段更新。
+- 配置更新写回 `.env`。
+- 配置更新写入 `events(config_updated)`。
+- 配置更新后 Web server 重新加载 config。
+- 新增流程开关：
+  - `PIPELINE_ENABLED`
+  - `WORKER_ENABLE_DOWNLOAD`
+  - `WORKER_ENABLE_DESCRIBE`
+  - `WORKER_CRON`
+- worker-run 已遵守：
+  - `PIPELINE_ENABLED=false` 时跳过 discovery/download/describe/publish。
+  - `WORKER_ENABLE_DOWNLOAD=false` 时跳过 download。
+  - `WORKER_ENABLE_DESCRIBE=false` 时跳过 describe。
+- Web 当前页面新增最小配置面板，可编辑常用配置：
+  - pipeline 开关
+  - worker interval/cron
+  - discovery/download/describe/publish 开关
+  - proxy/retries
+  - publish mode/limit/interval
+- 单元测试覆盖：
+  - 配置分组和敏感字段脱敏。
+  - 合法更新写回 `.env` 并写 audit event。
+  - 非法字段、非法值、masked sensitive value 拒绝保存。
+  - worker 遵守 pipeline/download/describe 开关。
+
+P9.1 未完成：
+
+- 真正的 cron 调度执行器；当前只保存 `WORKER_CRON` 配置。
+- 配置页最终交互设计；当前是最小可用面板。
+- 运行中 worker 的热重载机制；当前 Web server 会重载自身 config，worker 进程下一轮是否读取取决于启动方式。
 
 ### 风险点
 

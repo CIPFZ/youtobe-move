@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 class Config:
     def __init__(self, base_dir: Path | None = None) -> None:
         self.base_dir = base_dir or Path.cwd()
+        self.pipeline_enabled = os.environ["PIPELINE_ENABLED"].strip().lower() in {"1", "true", "yes", "on"}
         self.output_dir = Path(os.environ["OUTPUT_DIR"])
         self.db_path = self.resolve_path(os.environ["DB_PATH"])
         self.tmp_dir = self.resolve_path(os.environ["TMP_DIR"])
@@ -38,7 +39,10 @@ class Config:
         self.minimax_request_timeout = int(os.environ["MINIMAX_REQUEST_TIMEOUT"])
         self.minimax_max_tokens = int(os.environ["MINIMAX_MAX_TOKENS"])
         self.worker_interval_seconds = int(os.environ["WORKER_INTERVAL_SECONDS"])
+        self.worker_cron = os.environ["WORKER_CRON"]
         self.worker_enable_discovery = os.environ["WORKER_ENABLE_DISCOVERY"].strip().lower() in {"1", "true", "yes", "on"}
+        self.worker_enable_download = os.environ["WORKER_ENABLE_DOWNLOAD"].strip().lower() in {"1", "true", "yes", "on"}
+        self.worker_enable_describe = os.environ["WORKER_ENABLE_DESCRIBE"].strip().lower() in {"1", "true", "yes", "on"}
         self.worker_discovery_min_queue_size = int(os.environ["WORKER_DISCOVERY_MIN_QUEUE_SIZE"])
         self.worker_discovery_source = os.environ["WORKER_DISCOVERY_SOURCE"].strip() or None
         self.worker_enable_publish = os.environ["WORKER_ENABLE_PUBLISH"].strip().lower() in {"1", "true", "yes", "on"}
@@ -75,5 +79,5 @@ class Config:
 
 def load_config() -> Config:
     env_path = Path(".env").resolve()
-    load_dotenv(env_path)
+    load_dotenv(env_path, override=True)
     return Config(base_dir=env_path.parent)

@@ -56,7 +56,8 @@
       }
 
       button,
-      select {
+      select,
+      input {
         height: 34px;
         border: 1px solid var(--line);
         border-radius: 6px;
@@ -94,6 +95,11 @@
         padding: 0 10px;
       }
 
+      input {
+        min-width: 0;
+        padding: 0 10px;
+      }
+
       main {
         display: grid;
         grid-template-columns: minmax(360px, 0.9fr) minmax(520px, 1.2fr);
@@ -114,6 +120,10 @@
         border: 1px solid var(--line);
         border-radius: 8px;
         overflow: hidden;
+      }
+
+      .panel.wide {
+        grid-column: 1 / -1;
       }
 
       .panel-head {
@@ -294,6 +304,22 @@
         margin-top: 12px;
       }
 
+      .config-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(160px, 1fr));
+        gap: 12px;
+      }
+
+      .config-field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .config-field label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
       .events {
         max-height: 240px;
         overflow: auto;
@@ -340,6 +366,10 @@
         .detail-grid {
           grid-template-columns: 1fr;
         }
+
+        .config-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
       }
 
       @media (max-width: 620px) {
@@ -355,6 +385,10 @@
 
         .stats {
           grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .config-grid {
+          grid-template-columns: 1fr;
         }
       }
     </style>
@@ -401,6 +435,19 @@
           <div class="muted">请选择一个视频。</div>
         </div>
       </section>
+
+      <section class="panel wide">
+        <div class="panel-head">
+          <h2>配置</h2>
+          <div class="toolbar">
+            <button id="loadConfig">重新加载</button>
+            <button id="saveConfig" class="primary">保存配置</button>
+          </div>
+        </div>
+        <div id="configPanel" class="panel-body">
+          <div class="muted">正在加载配置。</div>
+        </div>
+      </section>
     </main>
 
     <div id="toast" class="toast"></div>
@@ -410,6 +457,7 @@
         status: "",
         videos: [],
         selectedId: "",
+        config: null,
       };
 
       const $ = (id) => document.getElementById(id);
@@ -466,6 +514,79 @@
         ]
           .map(([label, value]) => `<div class="stat"><span>${label}</span><b>${value}</b></div>`)
           .join("");
+      }
+
+      const configFields = [
+        "PIPELINE_ENABLED",
+        "WORKER_INTERVAL_SECONDS",
+        "WORKER_CRON",
+        "WORKER_ENABLE_DISCOVERY",
+        "WORKER_ENABLE_DOWNLOAD",
+        "WORKER_ENABLE_DESCRIBE",
+        "WORKER_ENABLE_PUBLISH",
+        "WORKER_PUBLISH_DRY_RUN",
+        "PROXY",
+        "RETRIES",
+        "FRAGMENT_RETRIES",
+        "PUBLISH_MODE",
+        "PUBLISH_DAILY_LIMIT",
+        "PUBLISH_MIN_INTERVAL_SECONDS",
+      ];
+
+      function flattenConfig(config) {
+        const map = {};
+        for (const fields of Object.values(config?.groups || {})) {
+          for (const field of fields) map[field.key] = field;
+        }
+        return map;
+      }
+
+      function renderConfig(config) {
+        state.config = config;
+        const fields = flattenConfig(config);
+        $("configPanel").innerHTML = `
+          <div class="config-grid">
+            ${configFields
+              .map((key) => {
+                const field = fields[key];
+                if (!field) return "";
+                const id = `cfg_${key}`;
+                const value = field.value ?? "";
+                if (field.type === "bool") {
+                  return `<div class="config-field"><label for="${id}">${key}</label><select id="${id}" data-key="${key}" data-type="${field.type}"><option value="true" ${value === true ? "selected" : ""}>true</option><option value="false" ${value === false ? "selected" : ""}>false</option></select></div>`;
+                }
+                if (field.choices && field.choices.length) {
+                  return `<div class="config-field"><label for="${id}">${key}</label><select id="${id}" data-key="${key}" data-type="${field.type}">${field.choices
+                    .map((choice) => `<option value="${escapeHtml(choice)}" ${String(value) === String(choice) ? "selected" : ""}>${escapeHtml(choice || "(empty)")}</option>`)
+                    .join("")}</select></div>`;
+                }
+                return `<div class="config-field"><label for="${id}">${key}</label><input id="${id}" data-key="${key}" data-type="${field.type}" value="${escapeHtml(value)}" /></div>`;
+              })
+              .join("")}
+          </div>
+          <div class="muted" style="margin-top: 12px;">配置文件：${escapeHtml(config.env_path || "-")}</div>
+        `;
+      }
+
+      async function loadConfig() {
+        renderConfig(await api("/api/config"));
+      }
+
+      async function saveConfig() {
+        const values = {};
+        for (const input of $("configPanel").querySelectorAll("[data-key]")) {
+          const key = input.dataset.key;
+          const type = input.dataset.type;
+          const raw = input.value;
+          if (type === "bool") values[key] = raw === "true";
+          else if (type === "int") values[key] = Number.parseInt(raw || "0", 10);
+          else if (type === "float") values[key] = Number.parseFloat(raw || "0");
+          else values[key] = raw;
+        }
+        const result = await api("/api/config", { method: "PATCH", body: JSON.stringify({ values }) });
+        renderConfig(result.config);
+        showToast(`已保存配置：${result.updated.join(", ")}`);
+        await loadAll();
       }
 
       function posterUrl(item) {
@@ -687,6 +808,8 @@
       }
 
       $("refresh").addEventListener("click", () => loadAll().catch((error) => showToast(error.message)));
+      $("loadConfig").addEventListener("click", () => loadConfig().catch((error) => showToast(error.message)));
+      $("saveConfig").addEventListener("click", () => saveConfig().catch((error) => showToast(error.message)));
       $("statusFilter").addEventListener("change", (event) => {
         state.status = event.target.value;
         loadAll("").catch((error) => showToast(error.message));
@@ -709,7 +832,7 @@
         }
       });
 
-      loadAll().catch((error) => showToast(error.message));
+      Promise.all([loadAll(), loadConfig()]).catch((error) => showToast(error.message));
     </script>
   </body>
 </html>
