@@ -137,6 +137,7 @@ function App() {
   const [storage, setStorage] = useState(null);
   const [discoverySources, setDiscoverySources] = useState([]);
   const [filters, setFilters] = useState({ status: "", draftStatus: "", errorType: "" });
+  const [selectedVideoIds, setSelectedVideoIds] = useState([]);
   const [addUrls, setAddUrls] = useState("");
   const [toast, setToast] = useState("");
   const [loading, setLoading] = useState(false);
@@ -173,6 +174,10 @@ function App() {
     ]);
     setStatus(statusPayload);
     setVideos(listPayload.videos || []);
+    setSelectedVideoIds((prev) => {
+      const visibleIds = new Set((listPayload.videos || []).map((item) => item.video.video_id));
+      return prev.filter((videoId) => visibleIds.has(videoId));
+    });
     if (keepSelected && (listPayload.videos || []).some((item) => item.video.video_id === keepSelected)) {
       await selectVideo(keepSelected);
     } else {
@@ -261,6 +266,25 @@ function App() {
       showToast(`添加完成：created=${result.created_count}, exists=${result.exists_count}, errors=${result.error_count}`);
       const firstCreated = (result.results || []).find((item) => item.status === "created");
       await loadAll(firstCreated?.video?.video_id || "");
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
+
+  async function runBatchAction(action) {
+    if (!selectedVideoIds.length) {
+      showToast("请先选择视频。");
+      return;
+    }
+    if (action === "skip" && !window.confirm(`确认跳过 ${selectedVideoIds.length} 个视频？`)) return;
+    try {
+      const result = await api("/api/videos/batch", {
+        method: "POST",
+        body: JSON.stringify({ action, video_ids: selectedVideoIds }),
+      });
+      showToast(result);
+      setSelectedVideoIds([]);
+      await loadAll();
     } catch (error) {
       showToast(error.message);
     }
@@ -385,7 +409,25 @@ function App() {
               <span className="muted">重复 video_id 不会重复入库。</span>
             </div>
           </div>
-          <VideoList videos={videos} selectedId={selectedId} onSelect={selectVideo} />
+          <div className="bulk-toolbar">
+            <div className="toolbar">
+              <button onClick={() => setSelectedVideoIds(videos.map((item) => item.video.video_id))}>全选</button>
+              <button onClick={() => setSelectedVideoIds([])}>清空</button>
+              <IconButton icon={Check} disabled={!selectedVideoIds.length} onClick={() => runBatchAction("approve")}>批量通过</IconButton>
+              <IconButton icon={RotateCcw} disabled={!selectedVideoIds.length} onClick={() => runBatchAction("retry")}>批量重试</IconButton>
+              <IconButton icon={SkipForward} className="danger" disabled={!selectedVideoIds.length} onClick={() => runBatchAction("skip")}>批量跳过</IconButton>
+            </div>
+            <span className="muted">已选择 {selectedVideoIds.length} 项</span>
+          </div>
+          <VideoList
+            videos={videos}
+            selectedId={selectedId}
+            selectedVideoIds={selectedVideoIds}
+            onToggleSelected={(videoId, checked) => {
+              setSelectedVideoIds((prev) => checked ? [...new Set([...prev, videoId])] : prev.filter((item) => item !== videoId));
+            }}
+            onSelect={selectVideo}
+          />
         </section>
 
         <section className="panel">
@@ -630,8 +672,9 @@ function StoragePanel({ storage }) {
   );
 }
 
-function VideoList({ videos, selectedId, onSelect }) {
+function VideoList({ videos, selectedId, selectedVideoIds, onToggleSelected, onSelect }) {
   if (!videos.length) return <div className="panel-body muted">暂无数据。</div>;
+  const selectedSet = new Set(selectedVideoIds || []);
   return (
     <div className="video-list">
       {videos.map((item) => {
@@ -640,19 +683,27 @@ function VideoList({ videos, selectedId, onSelect }) {
         const title = draft.title || video.title || video.video_id;
         const poster = item.media_files?.poster_path ? `/api/videos/${encodeURIComponent(video.video_id)}/file?type=poster` : "";
         return (
-          <button className={`video-row${video.video_id === selectedId ? " active" : ""}`} key={video.video_id} onClick={() => onSelect(video.video_id)}>
-            {poster ? <img className="thumb" src={poster} alt="" /> : <div className="thumb" />}
-            <div>
-              <div className="title">{title}</div>
-              <div className="meta-line">{escapeText(video.channel || "-")} · {fmtDuration(video.duration)} · {fmtCount(video.view_count)} views</div>
-              <div className="badges">
-                <span className={`badge ${video.status}`}>{video.status}</span>
-                {draft.status ? <span className="badge">{draft.status}</span> : null}
-                {draft.tid ? <span className="badge">tid {draft.tid}</span> : null}
-                {draft.tid_source ? <span className="badge">{draft.tid_source}</span> : null}
+          <div className={`video-row${video.video_id === selectedId ? " active" : ""}`} key={video.video_id}>
+            <input
+              type="checkbox"
+              checked={selectedSet.has(video.video_id)}
+              aria-label={`选择 ${title}`}
+              onChange={(event) => onToggleSelected(video.video_id, event.target.checked)}
+            />
+            <button className="video-main" onClick={() => onSelect(video.video_id)}>
+              {poster ? <img className="thumb" src={poster} alt="" /> : <div className="thumb" />}
+              <div>
+                <div className="title">{title}</div>
+                <div className="meta-line">{escapeText(video.channel || "-")} · {fmtDuration(video.duration)} · {fmtCount(video.view_count)} views</div>
+                <div className="badges">
+                  <span className={`badge ${video.status}`}>{video.status}</span>
+                  {draft.status ? <span className="badge">{draft.status}</span> : null}
+                  {draft.tid ? <span className="badge">tid {draft.tid}</span> : null}
+                  {draft.tid_source ? <span className="badge">{draft.tid_source}</span> : null}
+                </div>
               </div>
-            </div>
-          </button>
+            </button>
+          </div>
         );
       })}
     </div>

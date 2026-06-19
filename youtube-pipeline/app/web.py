@@ -191,6 +191,32 @@ def _handle_action(config: Config, video_id: str, action: str, body: dict[str, A
     raise WebError(HTTPStatus.NOT_FOUND, f"Unknown action: {action}")
 
 
+def _handle_batch_action(config: Config, action: str, video_ids: list[str], body: dict[str, Any]) -> dict[str, Any]:
+    if action not in {"approve", "reject", "retry", "skip"}:
+        raise WebError(HTTPStatus.BAD_REQUEST, f"Unsupported batch action: {action}")
+    if not video_ids:
+        raise WebError(HTTPStatus.BAD_REQUEST, "video_ids is required")
+    if len(video_ids) > 100:
+        raise WebError(HTTPStatus.BAD_REQUEST, "At most 100 videos can be processed at once")
+
+    results: list[dict[str, Any]] = []
+    for raw_video_id in video_ids:
+        try:
+            video_id = parse_video_id(str(raw_video_id))
+            result = _handle_action(config, video_id, action, body)
+            results.append({"video_id": video_id, "status": "ok", "result": result})
+        except Exception as exc:
+            results.append({"video_id": str(raw_video_id), "status": "error", "error": str(exc)})
+    return {
+        "status": "ok" if all(item["status"] == "ok" for item in results) else "partial",
+        "action": action,
+        "total": len(results),
+        "success_count": sum(1 for item in results if item["status"] == "ok"),
+        "error_count": sum(1 for item in results if item["status"] == "error"),
+        "results": results,
+    }
+
+
 class PipelineRequestHandler(BaseHTTPRequestHandler):
     server: PipelineHTTPServer
 
@@ -311,6 +337,21 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
                 raise WebError(HTTPStatus.BAD_REQUEST, "urls must be a string or list")
             status = str(body.get("status") or "selected")
             self._send_json(add_video_urls(urls, self.config, status=status, source="web"))
+            return
+
+        if method == "POST" and path == "/api/videos/batch":
+            action = str(body.get("action") or "").strip()
+            raw_video_ids = body.get("video_ids")
+            if not isinstance(raw_video_ids, list):
+                raise WebError(HTTPStatus.BAD_REQUEST, "video_ids must be a list")
+            self._send_json(
+                _handle_batch_action(
+                    self.config,
+                    action,
+                    [str(video_id) for video_id in raw_video_ids],
+                    body,
+                )
+            )
             return
 
         if method == "POST" and path == "/api/discover":

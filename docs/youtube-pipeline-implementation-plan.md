@@ -894,17 +894,28 @@ P9.2 队列管理已完成基础版：
   - `status`
   - `draft_status`
   - `error_type`
+- 新增批量操作 API：
+  - `POST /api/videos/batch`
+- 批量操作当前支持：
+  - `approve`
+  - `reject`
+  - `retry`
+  - `skip`
+- 批量操作逐条执行，单条失败不阻断整批，返回 success/error 明细。
+- Web 队列页新增多选、全选、清空、批量通过、批量重试、批量跳过。
 - 单元测试覆盖：
   - 单 URL 入队。
   - 重复 URL 不重复建 job。
   - 批量 URL 部分失败。
   - Web 列表按 draft/error 筛选。
+  - 批量操作部分失败。
+  - 不支持的批量动作拒绝执行。
 
 P9.2 未完成：
 
 - 优先级字段。
 - 来源标签字段。
-- 更完整的批量操作，如批量 approve、批量 retry。
+- 更完整的批量操作，如批量 reject、批量 real publish 预览；真实发布仍不建议批量。
 - 列表筛选目前是 Web 层基础实现，后续数据量变大时需要下沉到 repository SQL。
 
 P9.3 草稿编辑和发布策略已完成基础版：
@@ -931,6 +942,9 @@ P9.3 草稿编辑和发布策略已完成基础版：
   - 草稿保存后标记 manual。
   - 草稿保存后重置审核信息。
   - 非白名单 tid 拒绝保存。
+- 修正每日发布限制统计：
+  - `publish_records.created_at` 和真实发布 `published_at` 按 UTC 存储。
+  - 本地日开始时间会转换为 UTC 后再查询，避免本地 00:00 后漏计当天发布记录。
 
 P9.3 未完成：
 

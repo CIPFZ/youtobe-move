@@ -485,13 +485,17 @@ class Repository:
         return row is not None
 
     def count_publish_records_since(self, platform: str, account: str, since: datetime) -> int:
+        if since.tzinfo is None:
+            since_utc = datetime.fromtimestamp(since.timestamp(), UTC).replace(tzinfo=None)
+        else:
+            since_utc = since.astimezone(UTC).replace(tzinfo=None)
         row = self.conn.execute(
             """
             SELECT COUNT(*) AS count FROM publish_records
             WHERE platform=? AND account=? AND status='published'
               AND datetime(COALESCE(published_at, created_at)) >= datetime(?)
             """,
-            (platform, account, since.isoformat()),
+            (platform, account, since_utc.strftime("%Y-%m-%d %H:%M:%S")),
         ).fetchone()
         return int(row["count"])
 

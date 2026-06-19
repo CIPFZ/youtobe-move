@@ -8,7 +8,7 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.publish_service import update_publish_draft
-from app.web import WebError, _handle_action, _list_videos
+from app.web import WebError, _handle_action, _handle_batch_action, _list_videos
 
 
 class WebTests(unittest.TestCase):
@@ -92,6 +92,24 @@ class WebTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         review_publish_draft.assert_called_once_with("abc123def45", self.config, "approved", note="ok")
+
+    def test_batch_action_reports_partial_errors(self):
+        with patch("app.web.review_publish_draft", side_effect=[{"status": "ok"}, KeyError("missing")]):
+            result = _handle_batch_action(
+                self.config,
+                "approve",
+                ["abc123def45", "missing12345"],
+                {"note": "batch"},
+            )
+
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["success_count"], 1)
+        self.assertEqual(result["error_count"], 1)
+        self.assertEqual(result["results"][0]["video_id"], "abc123def45")
+
+    def test_batch_action_rejects_unsupported_action(self):
+        with self.assertRaises(WebError):
+            _handle_batch_action(self.config, "publish", ["abc123def45"], {})
 
     def test_add_url_api_helper_creates_queue_item(self):
         from app.operations import add_video_url
