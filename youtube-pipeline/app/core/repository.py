@@ -302,6 +302,58 @@ class Repository:
         ).fetchone()
         return row_to_dict(row)
 
+    def update_publish_draft(
+        self,
+        video_id: str,
+        platform: str,
+        title: str,
+        description: str,
+        tags: list[str],
+        tid: int | None,
+        tid_label: str = "",
+        tid_reason: str = "",
+        tid_source: str = "manual",
+        status: str = "pending",
+    ) -> dict[str, Any]:
+        if status not in {"pending", "approved", "rejected"}:
+            raise ValueError(f"Unknown publish draft status: {status}")
+        if not self.get_publish_draft(video_id, platform):
+            raise KeyError(f"Publish draft not found: {video_id}/{platform}")
+        self.conn.execute(
+            """
+            UPDATE publish_drafts
+            SET title=?, description=?, tags_json=?, tid=?, tid_label=?,
+                tid_reason=?, tid_source=?, status=?, reviewed_at=NULL,
+                review_note='', updated_at=CURRENT_TIMESTAMP
+            WHERE video_id=? AND platform=?
+            """,
+            (
+                title,
+                description,
+                json.dumps(tags, ensure_ascii=False),
+                tid,
+                tid_label,
+                tid_reason,
+                tid_source,
+                status,
+                video_id,
+                platform,
+            ),
+        )
+        self.create_event(
+            video_id,
+            None,
+            "core",
+            "publish_draft_updated",
+            f"Publish draft updated: {platform}",
+            {"platform": platform, "tid": tid, "tid_source": tid_source, "status": status},
+        )
+        self.conn.commit()
+        result = self.get_publish_draft(video_id, platform)
+        if result is None:
+            raise RuntimeError(f"Publish draft update failed: {video_id}/{platform}")
+        return result
+
     def update_publish_draft_status(
         self,
         video_id: str,

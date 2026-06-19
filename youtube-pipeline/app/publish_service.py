@@ -12,7 +12,7 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.job_retry import handle_job_failure
-from app.publisher import build_publish_payload, publish_payload_to_bilibili
+from app.publisher import build_publish_payload, normalize_tags, normalize_title, publish_payload_to_bilibili
 
 
 logger = logging.getLogger("youtube-pipeline")
@@ -413,6 +413,48 @@ def review_publish_draft(
         init_schema(conn)
         repo = Repository(conn)
         draft = repo.update_publish_draft_status(video_id, platform, status, note=note)
+        conn.commit()
+        return {"status": "ok", "draft": draft}
+
+
+def update_publish_draft(
+    video_id: str,
+    config: Config,
+    title: str,
+    description: str,
+    tags: list[str] | str,
+    tid: int,
+    status: str = "pending",
+    platform: str = BILIBILI_PLATFORM,
+) -> dict[str, Any]:
+    title = normalize_title(title)
+    description = str(description or "").strip()
+    parsed_tags = normalize_tags(tags)
+    if not title:
+        raise ValueError("Publish draft title is required")
+    if not description:
+        raise ValueError("Publish draft description is required")
+
+    allowed_tids = parse_tid_options(config.bilibili_tid_options)
+    if allowed_tids and int(tid) not in allowed_tids:
+        raise ValueError(f"Publish draft tid is not allowed: {tid}")
+    tid_label = allowed_tids.get(int(tid), "")
+
+    with connect(config.db_path) as conn:
+        init_schema(conn)
+        repo = Repository(conn)
+        draft = repo.update_publish_draft(
+            video_id=video_id,
+            platform=platform,
+            title=title,
+            description=description,
+            tags=parsed_tags,
+            tid=int(tid),
+            tid_label=tid_label,
+            tid_reason="operator edited draft",
+            tid_source="manual",
+            status=status,
+        )
         conn.commit()
         return {"status": "ok", "draft": draft}
 

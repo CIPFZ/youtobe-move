@@ -49,14 +49,20 @@ h2 {
 
 button,
 select,
-input {
+input,
+textarea {
   min-width: 0;
-  height: 34px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #fff;
   color: var(--text);
   font: inherit;
+}
+
+button,
+select,
+input {
+  height: 34px;
 }
 
 button {
@@ -171,10 +177,7 @@ textarea {
   width: 100%;
   min-height: 76px;
   resize: vertical;
-  border: 1px solid var(--line);
-  border-radius: 6px;
   padding: 10px;
-  font: inherit;
 }
 
 .video-list {
@@ -305,6 +308,33 @@ textarea {
 .description {
   white-space: pre-wrap;
   line-height: 1.7;
+}
+
+.draft-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.draft-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.draft-form label span,
+.draft-meta div:nth-child(odd) {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.draft-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(120px, 0.5fr);
+  gap: 10px;
+}
+
+.draft-meta {
+  margin-top: 12px;
 }
 
 .actions {

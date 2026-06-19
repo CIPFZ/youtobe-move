@@ -8,6 +8,7 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
+  Save,
   Search,
   Send,
   Settings,
@@ -76,6 +77,31 @@ function flattenConfig(config) {
     for (const field of fields) map[field.key] = field;
   }
   return map;
+}
+
+function parseTags(raw) {
+  try {
+    const parsed = JSON.parse(raw || "[]");
+    return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function tagsToText(raw) {
+  return parseTags(raw).join(", ");
+}
+
+function parseTidOptions(raw) {
+  return String(raw || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      const [tid, ...labelParts] = item.split(":");
+      return { tid: tid.trim(), label: labelParts.join(":").trim() };
+    })
+    .filter((item) => /^\d+$/.test(item.tid));
 }
 
 function IconButton({ icon: Icon, children, ...props }) {
@@ -301,7 +327,17 @@ function App() {
             <div className="muted">{selectedId || "未选择"}</div>
           </div>
           <div className="panel-body">
-            {detail ? <VideoDetail data={detail} onAction={runVideoAction} /> : <div className="muted">请选择一个视频。</div>}
+            {detail ? (
+              <VideoDetail
+                data={detail}
+                configByKey={configByKey}
+                onAction={runVideoAction}
+                onSaved={async () => {
+                  await loadAll(detail.video.video_id);
+                }}
+                showToast={showToast}
+              />
+            ) : <div className="muted">请选择一个视频。</div>}
           </div>
         </section>
 
@@ -351,7 +387,7 @@ function VideoList({ videos, selectedId, onSelect }) {
   );
 }
 
-function VideoDetail({ data, onAction }) {
+function VideoDetail({ data, configByKey, onAction, onSaved, showToast }) {
   const video = data.video;
   const draft = data.publish_draft || {};
   const records = data.publish_records || [];
@@ -367,6 +403,40 @@ function VideoDetail({ data, onAction }) {
   const canDownload = ["selected", "failed"].includes(video.status);
   const canRetry = video.status === "failed";
   const canSkip = !["published", "skipped"].includes(video.status);
+  const tidOptions = parseTidOptions(configByKey?.BILIBILI_TID_OPTIONS?.value);
+  const [draftForm, setDraftForm] = useState(() => makeDraftForm(draft));
+  const [savingDraft, setSavingDraft] = useState(false);
+
+  useEffect(() => {
+    setDraftForm(makeDraftForm(draft));
+  }, [video.video_id, draft.updated_at]);
+
+  function updateDraftField(field, value) {
+    setDraftForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function saveDraft() {
+    if (!draft.title) return;
+    setSavingDraft(true);
+    try {
+      const result = await api(`/api/videos/${encodeURIComponent(video.video_id)}/draft`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: draftForm.title,
+          description: draftForm.description,
+          tags: draftForm.tags,
+          tid: Number.parseInt(draftForm.tid || "0", 10),
+          status: draftForm.status || "pending",
+        }),
+      });
+      showToast(result);
+      await onSaved();
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setSavingDraft(false);
+    }
+  }
 
   return (
     <div className="detail-grid">
@@ -398,16 +468,50 @@ function VideoDetail({ data, onAction }) {
           <h2>发布草稿</h2>
           {draft.title ? (
             <>
-              <div className="kv">
-                <div>标题</div><div>{draft.title}</div>
-                <div>分区</div><div>{draft.tid || "-"} {draft.tid_label || ""}</div>
+              <div className="draft-form">
+                <label>
+                  <span>标题</span>
+                  <input value={draftForm.title} onChange={(event) => updateDraftField("title", event.target.value)} maxLength={80} />
+                </label>
+                <label>
+                  <span>描述</span>
+                  <textarea value={draftForm.description} onChange={(event) => updateDraftField("description", event.target.value)} rows={7} />
+                </label>
+                <label>
+                  <span>标签</span>
+                  <input value={draftForm.tags} onChange={(event) => updateDraftField("tags", event.target.value)} placeholder="使用逗号分隔" />
+                </label>
+                <div className="draft-row">
+                  <label>
+                    <span>分区</span>
+                    <select value={draftForm.tid} onChange={(event) => updateDraftField("tid", event.target.value)}>
+                      <option value="">请选择</option>
+                      {tidOptions.map((item) => <option value={item.tid} key={item.tid}>{item.tid} {item.label}</option>)}
+                      {!tidOptions.some((item) => item.tid === String(draft.tid || "")) && draft.tid ? (
+                        <option value={String(draft.tid)}>{draft.tid} {draft.tid_label || ""}</option>
+                      ) : null}
+                    </select>
+                  </label>
+                  <label>
+                    <span>审核</span>
+                    <select value={draftForm.status} onChange={(event) => updateDraftField("status", event.target.value)}>
+                      {draftOptions.map((item) => <option value={item} key={item}>{item}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="toolbar">
+                  <IconButton icon={Save} className="primary" onClick={saveDraft} disabled={savingDraft}>保存草稿</IconButton>
+                  <span className="muted">保存后分区来源会标记为 manual。</span>
+                </div>
+              </div>
+              <div className="kv draft-meta">
+                <div>当前分区</div><div>{draft.tid || "-"} {draft.tid_label || ""}</div>
                 <div>审核</div><div><span className="badge">{draft.status || "-"}</span> {draft.review_note || ""}</div>
                 <div>来源</div><div>{draft.tid_source || "-"}</div>
                 <div>原因</div><div>{draft.tid_reason || "-"}</div>
               </div>
-              <p className="description">{draft.description || ""}</p>
               <div className="badges">
-                {JSON.parse(draft.tags_json || "[]").map((tag) => <span className="badge" key={tag}>{tag}</span>)}
+                {parseTags(draft.tags_json).map((tag) => <span className="badge" key={tag}>{tag}</span>)}
               </div>
             </>
           ) : <div className="muted">暂无草稿。</div>}
@@ -452,6 +556,16 @@ function VideoDetail({ data, onAction }) {
       </div>
     </div>
   );
+}
+
+function makeDraftForm(draft) {
+  return {
+    title: draft.title || "",
+    description: draft.description || "",
+    tags: tagsToText(draft.tags_json),
+    tid: draft.tid ? String(draft.tid) : "",
+    status: draft.status || "pending",
+  };
 }
 
 function ConfigPanel({ config, configByKey }) {

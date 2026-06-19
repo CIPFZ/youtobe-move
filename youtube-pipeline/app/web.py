@@ -17,7 +17,7 @@ from app.core.schema import init_schema
 from app.discovery import discover_videos
 from app.download_service import download_next, download_video_from_db
 from app.operations import add_video_url, add_video_urls, pipeline_status, retry_video, skip_video
-from app.publish_service import describe_video, publish_next, publish_video, review_publish_draft
+from app.publish_service import describe_video, publish_next, publish_video, review_publish_draft, update_publish_draft
 from app.worker import run_worker_once
 from app.youtube_api import parse_video_id
 
@@ -334,6 +334,22 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
                 file_type = (query.get("type") or ["merged"])[0]
                 path, content_type = _media_file_response(self.config, video_id, file_type)
                 self._send_file(path, content_type)
+                return
+            if method == "PATCH" and len(parts) == 4 and parts[3] == "draft":
+                try:
+                    self._send_json(
+                        update_publish_draft(
+                            video_id=video_id,
+                            config=self.config,
+                            title=str(body.get("title") or ""),
+                            description=str(body.get("description") or ""),
+                            tags=body.get("tags") or [],
+                            tid=int(body.get("tid")),
+                            status=str(body.get("status") or "pending"),
+                        )
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise WebError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
                 return
             if method == "POST" and len(parts) == 4:
                 self._send_json(_handle_action(self.config, video_id, parts[3], body))

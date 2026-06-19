@@ -7,6 +7,7 @@ from unittest.mock import patch
 from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
+from app.publish_service import update_publish_draft
 from app.web import WebError, _handle_action, _list_videos
 
 
@@ -14,7 +15,7 @@ class WebTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.db_path = Path(self.temp_dir.name) / "pipeline.db"
-        self.config = SimpleNamespace(db_path=self.db_path)
+        self.config = SimpleNamespace(db_path=self.db_path, bilibili_tid_options="27:动画-综合,188:科技")
         self.conn = connect(self.db_path)
         init_schema(self.conn)
         self.repo = Repository(self.conn)
@@ -102,6 +103,66 @@ class WebTests(unittest.TestCase):
         self.assertEqual(result["status"], "created")
         self.assertEqual(video["status"], "selected")
         self.assertEqual(job["status"], "pending")
+
+    def test_update_publish_draft_marks_manual_and_resets_review(self):
+        self.repo.upsert_video(
+            "abc123def45",
+            "https://www.youtube.com/watch?v=abc123def45",
+            status="ready_to_publish",
+        )
+        self.repo.save_publish_draft(
+            "abc123def45",
+            "bilibili",
+            title="Old title",
+            description="Old body",
+            tags=["old"],
+            tid=27,
+            tid_source="llm",
+            status="approved",
+        )
+
+        result = update_publish_draft(
+            "abc123def45",
+            self.config,
+            title="New title",
+            description="New body",
+            tags="动画, 测试",
+            tid=188,
+        )
+
+        draft = result["draft"]
+        self.assertEqual(draft["title"], "New title")
+        self.assertEqual(draft["tid"], 188)
+        self.assertEqual(draft["tid_label"], "科技")
+        self.assertEqual(draft["tid_source"], "manual")
+        self.assertEqual(draft["status"], "pending")
+        self.assertEqual(draft["review_note"], "")
+
+    def test_update_publish_draft_rejects_unknown_tid(self):
+        self.repo.upsert_video(
+            "abc123def45",
+            "https://www.youtube.com/watch?v=abc123def45",
+            status="ready_to_publish",
+        )
+        self.repo.save_publish_draft(
+            "abc123def45",
+            "bilibili",
+            title="Old title",
+            description="Old body",
+            tags=["old"],
+            tid=27,
+            tid_source="llm",
+        )
+
+        with self.assertRaises(ValueError):
+            update_publish_draft(
+                "abc123def45",
+                self.config,
+                title="New title",
+                description="New body",
+                tags=["tag"],
+                tid=999,
+            )
 
 
 if __name__ == "__main__":
