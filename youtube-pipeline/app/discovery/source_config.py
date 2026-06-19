@@ -15,6 +15,20 @@ def _clean_string(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _parse_bool(value: Any, default: bool = True) -> bool:
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    raise ValueError(f"Invalid bool value: {value}")
+
+
 def normalize_discovery_source(source: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(source, dict):
         raise ValueError("Discovery source must be an object")
@@ -26,6 +40,8 @@ def normalize_discovery_source(source: dict[str, Any]) -> dict[str, Any]:
     name = _clean_string(source.get("name"))
     if name:
         result["name"] = name
+    result["enabled"] = _parse_bool(source.get("enabled"), default=True)
+    result["priority"] = int(source.get("priority") if source.get("priority") not in (None, "") else 100)
 
     max_results = int(source.get("max_results") or 0)
     if not (1 <= max_results <= 50):

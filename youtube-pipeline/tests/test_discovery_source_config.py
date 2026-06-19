@@ -52,6 +52,8 @@ class DiscoverySourceConfigTests(unittest.TestCase):
         source = normalize_discovery_source({"type": "channel_uploads", "handle": "demo", "max_results": 2})
 
         self.assertEqual(source["handle"], "@demo")
+        self.assertTrue(source["enabled"])
+        self.assertEqual(source["priority"], 100)
 
     def test_list_discovery_sources_adds_index(self):
         result = list_discovery_source_configs(self.config)

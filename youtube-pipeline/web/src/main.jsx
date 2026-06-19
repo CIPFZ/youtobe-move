@@ -524,6 +524,8 @@ function emptyDiscoveryForm() {
     handle: "",
     order: "relevance",
     max_results: "2",
+    enabled: "true",
+    priority: "100",
   };
 }
 
@@ -541,6 +543,8 @@ function formToSource(form) {
     type: form.type,
     name: form.name.trim(),
     max_results: Number.parseInt(form.max_results || "2", 10),
+    enabled: form.enabled === "true",
+    priority: Number.parseInt(form.priority || "100", 10),
   };
   if (form.type === "search") {
     source.keyword = form.keyword.trim();
@@ -588,9 +592,11 @@ function DiscoverySourcesPanel({ sources, preview, onSave, onDelete, onPreview }
           <button className={`source-row${selectedIndex === source.index ? " active" : ""}`} key={source.index} onClick={() => editSource(source)}>
             <div>
               <b>{source.name || `${source.type}:${source.index}`}</b>
-              <div className="muted">{source.type} · max {source.max_results} · {source.keyword || source.region_code || source.handle || source.channel_id || "-"}</div>
+              <div className="muted">
+                {source.type} · {source.enabled === false ? "disabled" : "enabled"} · priority {source.priority ?? 100} · max {source.max_results} · {source.keyword || source.region_code || source.handle || source.channel_id || "-"}
+              </div>
             </div>
-            <span className="badge">{source.index}</span>
+            <span className={`badge${source.enabled === false ? " failed" : ""}`}>{source.index}</span>
           </button>
         )) : <div className="muted">暂无发现源。</div>}
       </div>
@@ -607,6 +613,19 @@ function DiscoverySourcesPanel({ sources, preview, onSave, onDelete, onPreview }
           <label>
             <span>数量</span>
             <input value={form.max_results} onChange={(event) => updateField("max_results", event.target.value)} />
+          </label>
+        </div>
+        <div className="draft-row">
+          <label>
+            <span>启用</span>
+            <select value={form.enabled} onChange={(event) => updateField("enabled", event.target.value)}>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </label>
+          <label>
+            <span>优先级</span>
+            <input value={form.priority} onChange={(event) => updateField("priority", event.target.value)} />
           </label>
         </div>
         <label>

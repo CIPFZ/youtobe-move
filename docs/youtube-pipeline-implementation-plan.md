@@ -1006,10 +1006,13 @@ P9.5 发现源管理已完成基础版：
   - 支持 `search`。
   - 支持 `trending`。
   - 支持 `channel_uploads`。
+  - `enabled` 默认为 `true`。
+  - `priority` 默认为 `100`。
   - `max_results` 限制为 1-50。
   - `search` 必须有 keyword。
   - `channel_uploads` 必须有 channel_id 或 handle。
   - handle 自动补齐 `@`。
+- discovery 执行时会跳过 `enabled=false` 的 source，并按 `priority` 升序执行。
 - 新增 Web API：
   - `GET /api/discovery/sources`
   - `POST /api/discovery/sources`
@@ -1025,17 +1028,20 @@ P9.5 发现源管理已完成基础版：
   - 编辑 source。
   - 删除 source。
   - 单 source dry-run 预览。
+  - 启用/禁用 source。
+  - 修改 source priority。
   - 表单按 source type 显示不同字段。
 - 单元测试覆盖：
   - 类型字段校验。
   - 列表 index。
   - 新增、更新、删除写回 `.env`。
   - 单 source preview 不入库。
+  - disabled source 不参与发现。
+  - source 按 priority 排序。
 
 P9.5 未完成：
 
-- source 启用/禁用字段。
-- source 优先级/权重。
+- source 权重。
 - source 级别过滤规则。
 - preview 结果分页和更完整的候选详情展示。
 

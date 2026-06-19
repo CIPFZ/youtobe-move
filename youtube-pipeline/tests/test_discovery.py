@@ -69,6 +69,19 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(sources[0].type, "search")
         self.assertEqual(sources[0].params["keyword"], "animated short")
 
+    def test_load_discovery_sources_skips_disabled_and_sorts_priority(self):
+        self.config.discovery_sources_json = json.dumps(
+            [
+                {"type": "search", "name": "late", "keyword": "late", "max_results": 1, "priority": 50},
+                {"type": "search", "name": "off", "keyword": "off", "max_results": 1, "enabled": False, "priority": 1},
+                {"type": "trending", "name": "early", "region_code": "US", "max_results": 1, "priority": 10},
+            ]
+        )
+
+        sources = load_discovery_sources(self.config)
+
+        self.assertEqual([source.name for source in sources], ["early", "late"])
+
     def test_discover_dry_run_does_not_insert(self):
         candidates = [self._candidate()]
 

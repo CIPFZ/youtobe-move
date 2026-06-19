@@ -1,25 +1,22 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from app.config import Config
 from app.discovery.models import DiscoverySource, VideoCandidate, candidate_from_youtube_item
+from app.discovery.source_config import parse_discovery_sources
 from app.youtube_api import get_channel_id_by_handle, get_channel_uploads, get_trending_videos, search_videos
 
 
 def load_discovery_sources(config: Config, source_type: str | None = None) -> list[DiscoverySource]:
-    try:
-        raw_sources = json.loads(config.discovery_sources_json)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"DISCOVERY_SOURCES_JSON is invalid JSON: {exc}") from exc
-    if not isinstance(raw_sources, list):
-        raise ValueError("DISCOVERY_SOURCES_JSON must be a JSON array")
+    raw_sources = parse_discovery_sources(config.discovery_sources_json)
 
     sources: list[DiscoverySource] = []
     for index, item in enumerate(raw_sources):
         if not isinstance(item, dict):
             raise ValueError(f"Discovery source #{index} must be an object")
+        if item.get("enabled") is False:
+            continue
         current_type = str(item.get("type") or "").strip()
         if not current_type:
             raise ValueError(f"Discovery source #{index} is missing type")
@@ -27,7 +24,7 @@ def load_discovery_sources(config: Config, source_type: str | None = None) -> li
             continue
         name = str(item.get("name") or f"{current_type}:{index}")
         sources.append(DiscoverySource(type=current_type, name=name, params=item))
-    return sources
+    return sorted(sources, key=lambda source: int(source.params.get("priority") or 100))
 
 
 def _max_results(source: DiscoverySource, config: Config) -> int:
