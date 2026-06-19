@@ -115,4 +115,13 @@ CREATE INDEX IF NOT EXISTS idx_events_video_id_created_at ON events(video_id, cr
 
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(publish_drafts)").fetchall()
+    }
+    if "reviewed_at" not in columns:
+        conn.execute("ALTER TABLE publish_drafts ADD COLUMN reviewed_at TEXT")
+    if "review_note" not in columns:
+        conn.execute("ALTER TABLE publish_drafts ADD COLUMN review_note TEXT NOT NULL DEFAULT ''")
+    conn.execute("UPDATE publish_drafts SET status='pending' WHERE status IN ('ready', 'draft')")
     conn.commit()

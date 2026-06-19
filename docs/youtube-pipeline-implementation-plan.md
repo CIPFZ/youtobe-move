@@ -523,16 +523,16 @@ POST /api/videos/<video_id>/skip
 - `youtube-pipeline web`：启动本地管理台。
 - `WEB_HOST`、`WEB_PORT`：控制 Web 绑定地址。
 - 队列列表：展示状态、频道、时长、播放量、tid、tid source。
-- 状态统计：展示 active queue、ready、published、failed。
+- 状态统计：展示 active queue、ready、published、publish mode。
 - 视频详情：展示基础信息、原链接、发布草稿、tid 选择理由、标签、发布记录、最近事件。
 - 文件入口：poster、merged 视频、meta。
-- 操作按钮：运行一轮、发现预览、下载、生成文案、发布预览、真实发布、重试、跳过。
+- 操作按钮：运行一轮、发现预览、下载、生成文案、通过、拒绝、发布预览、真实发布、重试、跳过。
 - 安全保护：真实发布需要前端确认和 API `confirm=true`；worker 自动发布仍默认关闭。
 - 浏览器验证：页面加载真实队列、详情可展示、发布预览不改变发布状态。
 
 未完成：
 
-- 草稿编辑和人工 approve/reject。
+- 草稿编辑。
 - 登录认证。
 - 更细的筛选和搜索。
 - Web 上的批量操作。
@@ -559,7 +559,7 @@ POST /api/videos/<video_id>/skip
 2. 自动发布模式
    - `manual`
    - `approved_auto`
-   - `full_auto` 预留
+   - `full_auto`
 
 3. 发布节流
    - 每日发布上限
@@ -578,7 +578,42 @@ POST /api/videos/<video_id>/skip
    - jobs 列表
    - 重试
    - 跳过
-   - 错误查看
+- 错误查看
+
+### 当前状态
+
+已完成最小版：
+
+- `PUBLISH_MODE=manual|approved_auto|full_auto`。
+- `manual`：worker/publish-next 不自动发布。
+- `approved_auto`：只自动发布 `approved` 草稿。
+- `full_auto`：允许自动发布非 rejected、非 fallback 的有效草稿。
+- 生成草稿时：
+  - `manual`、`approved_auto` 默认写入 `pending`
+  - `full_auto` 默认写入 `approved`
+- 发布节流：
+  - `PUBLISH_MIN_INTERVAL_SECONDS`
+  - `PUBLISH_DAILY_LIMIT`
+  - `PUBLISH_WINDOW_START`
+  - `PUBLISH_WINDOW_END`
+- Web/API：
+  - `POST /api/videos/<video_id>/approve`
+  - `POST /api/videos/<video_id>/reject`
+  - `/api/status` 返回当前发布模式和节流配置
+- CLI：
+  - `youtube-pipeline review <video_id> pending|approved|rejected`
+- 测试覆盖：
+  - manual 模式跳过自动发布
+  - approved_auto 只发布 approved 草稿
+  - full_auto 可发布 pending 有效草稿
+  - 日发布上限
+  - Web 真实发布必须 confirm
+
+未完成：
+
+- 草稿内容编辑。
+- 更细的失败分类和延迟重试。
+- 发布日历/时间计划。
 
 ### 验收标准
 

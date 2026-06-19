@@ -15,7 +15,7 @@ from app.downloader import download_video_assets
 from app.logger import setup_logger
 from app.operations import pipeline_status, retry_video, skip_video
 from app.pipeline import run_download_publish
-from app.publish_service import describe_video, publish_next, publish_video
+from app.publish_service import describe_video, publish_next, publish_video, review_publish_draft
 from app.publisher import publish_to_bilibili
 from app.web import run_web_server
 from app.worker import run_worker_loop, run_worker_once
@@ -75,6 +75,11 @@ def build_parser() -> argparse.ArgumentParser:
     describe_parser = subparsers.add_parser("describe", help="Generate a Bilibili publish draft for one downloaded video.")
     describe_parser.add_argument("video_id", help="YouTube video id or URL")
     describe_parser.add_argument("--force", action="store_true", help="Regenerate the publish draft")
+
+    review_parser = subparsers.add_parser("review", help="Review one Bilibili publish draft.")
+    review_parser.add_argument("video_id", help="YouTube video id or URL")
+    review_parser.add_argument("status", choices=["pending", "approved", "rejected"], help="Draft review status")
+    review_parser.add_argument("--note", default="", help="Optional review note")
 
     publish_parser = subparsers.add_parser("publish", help="Publish one ready video to Bilibili.")
     publish_parser.add_argument("video_id", help="YouTube video id or URL")
@@ -204,6 +209,9 @@ def main() -> int:
             logger.info("Describe job started: video_id=%s force=%s", video_id, args.force)
             result = describe_video(video_id, config, force=args.force)
             logger.info("Describe job completed: video_id=%s status=%s", video_id, result["status"])
+        elif args.command == "review":
+            video_id = parse_video_id(args.video_id)
+            result = review_publish_draft(video_id, config, args.status, note=args.note)
         elif args.command == "publish":
             video_id = parse_video_id(args.video_id)
             logger.info(

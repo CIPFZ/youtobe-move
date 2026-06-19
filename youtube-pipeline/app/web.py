@@ -16,7 +16,7 @@ from app.core.schema import init_schema
 from app.discovery import discover_videos
 from app.download_service import download_next, download_video_from_db
 from app.operations import pipeline_status, retry_video, skip_video
-from app.publish_service import describe_video, publish_next, publish_video
+from app.publish_service import describe_video, publish_next, publish_video, review_publish_draft
 from app.worker import run_worker_once
 from app.youtube_api import parse_video_id
 
@@ -138,6 +138,10 @@ def _media_file_response(config: Config, video_id: str, file_type: str) -> tuple
 
 
 def _handle_action(config: Config, video_id: str, action: str, body: dict[str, Any]) -> dict[str, Any]:
+    if action == "approve":
+        return review_publish_draft(video_id, config, "approved", note=str(body.get("note") or ""))
+    if action == "reject":
+        return review_publish_draft(video_id, config, "rejected", note=str(body.get("note") or ""))
     if action == "retry":
         job_type = body.get("job_type") or None
         return retry_video(video_id, config, job_type=job_type)
@@ -206,7 +210,17 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
 
         if method == "GET" and path == "/api/status":
             limit = _parse_int((query.get("events_limit") or [""])[0], 20, minimum=0, maximum=100)
-            self._send_json(pipeline_status(self.config, events_limit=limit))
+            result = pipeline_status(self.config, events_limit=limit)
+            result["settings"] = {
+                "publish_mode": self.config.publish_mode,
+                "worker_enable_publish": self.config.worker_enable_publish,
+                "worker_publish_dry_run": self.config.worker_publish_dry_run,
+                "publish_min_interval_seconds": self.config.publish_min_interval_seconds,
+                "publish_daily_limit": self.config.publish_daily_limit,
+                "publish_window_start": self.config.publish_window_start,
+                "publish_window_end": self.config.publish_window_end,
+            }
+            self._send_json(result)
             return
 
         if method == "GET" and path == "/api/videos":
@@ -274,7 +288,10 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(raw)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(raw)
+        try:
+            self.wfile.write(raw)
+        except (BrokenPipeError, ConnectionResetError):
+            logger.info("web client disconnected while sending JSON")
 
     def _send_static(self, path: Path) -> None:
         if not path.exists() or not path.is_file():
@@ -290,7 +307,11 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         with path.open("rb") as file:
             while chunk := file.read(1024 * 1024):
-                self.wfile.write(chunk)
+                try:
+                    self.wfile.write(chunk)
+                except (BrokenPipeError, ConnectionResetError):
+                    logger.info("web client disconnected while streaming file: %s", path)
+                    break
 
 
 def run_web_server(config: Config, host: str | None = None, port: int | None = None) -> None:

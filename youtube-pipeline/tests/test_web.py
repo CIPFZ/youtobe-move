@@ -60,6 +60,13 @@ class WebTests(unittest.TestCase):
         self.assertEqual(result["status"], "dry_run")
         publish_video.assert_called_once_with("abc123def45", self.config, dry_run=True, force=False)
 
+    def test_approve_delegates_to_review_service(self):
+        with patch("app.web.review_publish_draft", return_value={"status": "ok"}) as review_publish_draft:
+            result = _handle_action(self.config, "abc123def45", "approve", {"note": "ok"})
+
+        self.assertEqual(result["status"], "ok")
+        review_publish_draft.assert_called_once_with("abc123def45", self.config, "approved", note="ok")
+
 
 if __name__ == "__main__":
     unittest.main()

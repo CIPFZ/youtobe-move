@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime
 from typing import Any
 
 from app.core.status import JOB_STATUSES, ensure_video_status, ensure_video_transition
@@ -273,6 +274,8 @@ class Repository:
                 tid_source=excluded.tid_source,
                 llm_raw_output=excluded.llm_raw_output,
                 status=excluded.status,
+                reviewed_at=NULL,
+                review_note='',
                 updated_at=CURRENT_TIMESTAMP
             """,
             (
@@ -296,6 +299,71 @@ class Repository:
         row = self.conn.execute(
             "SELECT * FROM publish_drafts WHERE video_id=? AND platform=?",
             (video_id, platform),
+        ).fetchone()
+        return row_to_dict(row)
+
+    def update_publish_draft_status(
+        self,
+        video_id: str,
+        platform: str,
+        status: str,
+        note: str = "",
+    ) -> dict[str, Any]:
+        if status not in {"pending", "approved", "rejected"}:
+            raise ValueError(f"Unknown publish draft status: {status}")
+        if not self.get_publish_draft(video_id, platform):
+            raise KeyError(f"Publish draft not found: {video_id}/{platform}")
+        self.conn.execute(
+            """
+            UPDATE publish_drafts
+            SET status=?, reviewed_at=CURRENT_TIMESTAMP, review_note=?, updated_at=CURRENT_TIMESTAMP
+            WHERE video_id=? AND platform=?
+            """,
+            (status, note, video_id, platform),
+        )
+        self.create_event(
+            video_id,
+            None,
+            "core",
+            "publish_draft_reviewed",
+            f"Publish draft reviewed: {platform}/{status}",
+            {"platform": platform, "status": status, "note": note},
+        )
+        self.conn.commit()
+        result = self.get_publish_draft(video_id, platform)
+        if result is None:
+            raise RuntimeError(f"Publish draft status update failed: {video_id}/{platform}")
+        return result
+
+    def find_next_publishable_video(
+        self,
+        platform: str,
+        account: str,
+        require_approved: bool,
+    ) -> dict[str, Any] | None:
+        review_filter = "AND publish_drafts.status='approved'" if require_approved else "AND publish_drafts.status!='rejected'"
+        row = self.conn.execute(
+            f"""
+            SELECT videos.* FROM videos
+            JOIN publish_drafts ON publish_drafts.video_id = videos.video_id
+            WHERE videos.status='ready_to_publish'
+              AND publish_drafts.platform=?
+              AND publish_drafts.title!=''
+              AND publish_drafts.description!=''
+              AND publish_drafts.tid IS NOT NULL
+              AND publish_drafts.tid_source!='fallback'
+              {review_filter}
+              AND NOT EXISTS (
+                  SELECT 1 FROM publish_records
+                  WHERE publish_records.video_id = videos.video_id
+                    AND publish_records.platform = ?
+                    AND publish_records.account = ?
+                    AND publish_records.status = 'published'
+              )
+            ORDER BY videos.updated_at ASC
+            LIMIT 1
+            """,
+            (platform, platform, account),
         ).fetchone()
         return row_to_dict(row)
 
@@ -331,6 +399,29 @@ class Repository:
             (video_id, platform, account),
         ).fetchone()
         return row is not None
+
+    def count_publish_records_since(self, platform: str, account: str, since: datetime) -> int:
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS count FROM publish_records
+            WHERE platform=? AND account=? AND status='published'
+              AND datetime(COALESCE(published_at, created_at)) >= datetime(?)
+            """,
+            (platform, account, since.isoformat()),
+        ).fetchone()
+        return int(row["count"])
+
+    def get_latest_publish_record(self, platform: str, account: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT * FROM publish_records
+            WHERE platform=? AND account=? AND status='published'
+            ORDER BY datetime(COALESCE(published_at, created_at)) DESC
+            LIMIT 1
+            """,
+            (platform, account),
+        ).fetchone()
+        return row_to_dict(row)
 
     def list_publish_records(self, video_id: str, platform: str | None = None) -> list[dict[str, Any]]:
         if platform:

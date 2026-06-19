@@ -51,6 +51,16 @@ youtube-pipeline worker-run
 
 worker 默认会按低水位补充 discovery，并推进 download/describe。真实发布默认关闭。
 
+自动发布模式由 `.env` 中的 `PUBLISH_MODE` 控制：
+
+```text
+manual         # 不自动发布
+approved_auto  # 只自动发布审核通过的草稿
+full_auto      # 自动发布有效的非 fallback 草稿
+```
+
+所有自动发布模式都会受每日上限、发布时间窗口、最小发布间隔限制。
+
 下载并合并：
 
 ```bash
@@ -62,6 +72,13 @@ youtube-pipeline download-next
 
 ```bash
 youtube-pipeline describe ppMXtTbNnCs
+```
+
+审核发布草稿：
+
+```bash
+youtube-pipeline review ppMXtTbNnCs approved
+youtube-pipeline review ppMXtTbNnCs rejected --note "不适合发布"
 ```
 
 发布预览，不上传：

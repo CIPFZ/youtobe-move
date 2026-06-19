@@ -8,7 +8,7 @@ from unittest.mock import patch
 from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
-from app.publish_service import describe_video, publish_video
+from app.publish_service import describe_video, publish_next, publish_video, review_publish_draft
 
 
 class PublishServiceTests(unittest.TestCase):
@@ -20,6 +20,11 @@ class PublishServiceTests(unittest.TestCase):
             db_path=self.db_path,
             bilibili_account="mybili",
             bilibili_tid_options="27:动画-综合,188:科技",
+            publish_mode="manual",
+            publish_min_interval_seconds=0,
+            publish_daily_limit=0,
+            publish_window_start="",
+            publish_window_end="",
         )
         self.conn = connect(self.db_path)
         init_schema(self.conn)
@@ -51,7 +56,7 @@ class PublishServiceTests(unittest.TestCase):
             tid_label="动画-综合",
             tid_reason="适合动画分区",
             tid_source=tid_source,
-            status="ready",
+            status="pending",
         )
         self.repo.update_video_status(video_id, "ready_to_publish")
 
@@ -77,6 +82,7 @@ class PublishServiceTests(unittest.TestCase):
         self.assertEqual(video["status"], "ready_to_publish")
         self.assertEqual(draft["title"], "中文标题")
         self.assertEqual(draft["tid_source"], "llm")
+        self.assertEqual(draft["status"], "pending")
         self.assertEqual(job["status"], "succeeded")
 
     def test_publish_video_dry_run_uses_saved_draft(self):
@@ -118,6 +124,62 @@ class PublishServiceTests(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             publish_video(video_id, self.config)
+
+    def test_review_publish_draft_marks_approved(self):
+        video_id, _, _ = self._add_downloaded_video()
+        self._save_ready_draft(video_id)
+
+        result = review_publish_draft(video_id, self.config, "approved", note="ok")
+
+        self.assertEqual(result["draft"]["status"], "approved")
+        self.assertEqual(result["draft"]["review_note"], "ok")
+
+    def test_publish_next_skips_in_manual_mode(self):
+        video_id, _, _ = self._add_downloaded_video()
+        self._save_ready_draft(video_id)
+
+        result = publish_next(self.config)
+
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "publish_mode_manual")
+
+    def test_publish_next_requires_approved_draft_in_approved_auto_mode(self):
+        video_id, _, _ = self._add_downloaded_video()
+        self._save_ready_draft(video_id)
+        self.config.publish_mode = "approved_auto"
+
+        result = publish_next(self.config)
+        self.assertEqual(result["status"], "empty")
+
+        review_publish_draft(video_id, self.config, "approved")
+        with patch("app.publish_service.publish_payload_to_bilibili", side_effect=lambda payload, config, dry_run=False: payload):
+            published = publish_next(self.config)
+
+        self.assertEqual(published["status"], "published")
+
+    def test_publish_next_allows_pending_draft_in_full_auto_mode(self):
+        video_id, _, _ = self._add_downloaded_video()
+        self._save_ready_draft(video_id)
+        self.config.publish_mode = "full_auto"
+
+        with patch("app.publish_service.publish_payload_to_bilibili", side_effect=lambda payload, config, dry_run=False: payload):
+            result = publish_next(self.config)
+
+        self.assertEqual(result["status"], "published")
+
+    def test_publish_next_respects_daily_limit(self):
+        video_id, _, _ = self._add_downloaded_video()
+        self._save_ready_draft(video_id)
+        review_publish_draft(video_id, self.config, "approved")
+        self.repo.upsert_video("alreadydone1", "https://www.youtube.com/watch?v=alreadydone1")
+        self.repo.save_publish_record("alreadydone1", "bilibili", "mybili", "published")
+        self.config.publish_mode = "approved_auto"
+        self.config.publish_daily_limit = 1
+
+        result = publish_next(self.config)
+
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "daily_limit_reached")
 
 
 if __name__ == "__main__":

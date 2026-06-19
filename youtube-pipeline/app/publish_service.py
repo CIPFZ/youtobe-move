@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,80 @@ from app.publisher import build_publish_payload, publish_payload_to_bilibili
 logger = logging.getLogger("youtube-pipeline")
 
 BILIBILI_PLATFORM = "bilibili"
+PUBLISH_MODES = {"manual", "approved_auto", "full_auto"}
+
+
+def _ensure_publish_mode(config: Config) -> str:
+    mode = str(config.publish_mode or "manual")
+    if mode not in PUBLISH_MODES:
+        raise RuntimeError(f"Unsupported PUBLISH_MODE: {mode}")
+    return mode
+
+
+def _parse_window_time(value: str) -> time | None:
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        hour, minute = value.split(":", 1)
+        return time(hour=int(hour), minute=int(minute))
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid publish window time: {value}") from exc
+
+
+def _check_publish_throttle(repo: Repository, config: Config) -> dict[str, Any]:
+    now = datetime.now()
+    start = _parse_window_time(str(config.publish_window_start or ""))
+    end = _parse_window_time(str(config.publish_window_end or ""))
+    if start and end:
+        current = now.time()
+        if start <= end:
+            in_window = start <= current <= end
+        else:
+            in_window = current >= start or current <= end
+        if not in_window:
+            return {
+                "ok": False,
+                "reason": "outside_publish_window",
+                "now": current.strftime("%H:%M"),
+                "window_start": start.strftime("%H:%M"),
+                "window_end": end.strftime("%H:%M"),
+            }
+
+    daily_limit = int(config.publish_daily_limit)
+    if daily_limit > 0:
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        published_today = repo.count_publish_records_since(BILIBILI_PLATFORM, config.bilibili_account, day_start)
+        if published_today >= daily_limit:
+            return {
+                "ok": False,
+                "reason": "daily_limit_reached",
+                "published_today": published_today,
+                "daily_limit": daily_limit,
+            }
+
+    min_interval = int(config.publish_min_interval_seconds)
+    if min_interval > 0:
+        latest = repo.get_latest_publish_record(BILIBILI_PLATFORM, config.bilibili_account)
+        if latest:
+            published_at_raw = str(latest.get("published_at") or latest.get("created_at") or "")
+            try:
+                published_at = datetime.fromisoformat(published_at_raw.replace("Z", "+00:00"))
+                if published_at.tzinfo is not None:
+                    published_at = published_at.astimezone().replace(tzinfo=None)
+            except ValueError:
+                published_at = None
+            if published_at is not None:
+                elapsed = now - published_at
+                if elapsed < timedelta(seconds=min_interval):
+                    return {
+                        "ok": False,
+                        "reason": "min_interval_not_elapsed",
+                        "elapsed_seconds": int(elapsed.total_seconds()),
+                        "min_interval_seconds": min_interval,
+                    }
+
+    return {"ok": True}
 
 
 def _ensure_job(repo: Repository, job_type: str, video: dict[str, Any], force: bool = False) -> int:
@@ -108,6 +182,7 @@ def describe_video(video_id: str, config: Config, force: bool = False) -> dict[s
             data_dir = _data_dir_from_media_files(repo.get_media_files(video_id))
             payload = build_publish_payload(data_dir, config)
             tid_selection = payload["tid_selection"]
+            draft_status = "approved" if _ensure_publish_mode(config) == "full_auto" else "pending"
             repo.save_publish_draft(
                 video_id=video_id,
                 platform=BILIBILI_PLATFORM,
@@ -127,7 +202,7 @@ def describe_video(video_id: str, config: Config, force: bool = False) -> dict[s
                     },
                     ensure_ascii=False,
                 ),
-                status="ready",
+                status=draft_status,
             )
             repo.update_video_status(video_id, "ready_to_publish", "Publish draft generated")
             repo.update_job_status(job_id, "succeeded")
@@ -214,19 +289,48 @@ def publish_video(video_id: str, config: Config, dry_run: bool = False, force: b
 
 
 def publish_next(config: Config, dry_run: bool = False, force: bool = False) -> dict[str, Any]:
+    mode = _ensure_publish_mode(config)
+    if mode == "manual":
+        return {"status": "skipped", "reason": "publish_mode_manual"}
+
     with connect(config.db_path) as conn:
         init_schema(conn)
         repo = Repository(conn)
-        job = repo.get_pending_job("publish")
-        if job:
-            video_id = str(job["video_id"])
-        else:
-            ready = repo.list_videos(status="ready_to_publish", limit=1)
-            if not ready:
-                return {"status": "empty", "message": "No ready videos waiting for publish"}
-            video_id = str(ready[0]["video_id"])
+
+        if not dry_run:
+            throttle = _check_publish_throttle(repo, config)
+            if not throttle["ok"]:
+                return {"status": "skipped", **throttle}
+
+        video = repo.find_next_publishable_video(
+            BILIBILI_PLATFORM,
+            config.bilibili_account,
+            require_approved=mode == "approved_auto",
+        )
+        if not video:
+            return {
+                "status": "empty",
+                "message": "No publishable videos waiting for automatic publish",
+                "publish_mode": mode,
+            }
+        video_id = str(video["video_id"])
 
     return publish_video(video_id, config, dry_run=dry_run, force=force)
+
+
+def review_publish_draft(
+    video_id: str,
+    config: Config,
+    status: str,
+    note: str = "",
+    platform: str = BILIBILI_PLATFORM,
+) -> dict[str, Any]:
+    with connect(config.db_path) as conn:
+        init_schema(conn)
+        repo = Repository(conn)
+        draft = repo.update_publish_draft_status(video_id, platform, status, note=note)
+        conn.commit()
+        return {"status": "ok", "draft": draft}
 
 
 def describe_next(config: Config, force: bool = False) -> dict[str, Any]:

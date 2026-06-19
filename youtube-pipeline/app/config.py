@@ -43,6 +43,11 @@ class Config:
         self.worker_discovery_source = os.environ["WORKER_DISCOVERY_SOURCE"].strip() or None
         self.worker_enable_publish = os.environ["WORKER_ENABLE_PUBLISH"].strip().lower() in {"1", "true", "yes", "on"}
         self.worker_publish_dry_run = os.environ["WORKER_PUBLISH_DRY_RUN"].strip().lower() in {"1", "true", "yes", "on"}
+        self.publish_mode = os.environ["PUBLISH_MODE"]
+        self.publish_min_interval_seconds = int(os.environ["PUBLISH_MIN_INTERVAL_SECONDS"])
+        self.publish_daily_limit = int(os.environ["PUBLISH_DAILY_LIMIT"])
+        self.publish_window_start = os.environ["PUBLISH_WINDOW_START"]
+        self.publish_window_end = os.environ["PUBLISH_WINDOW_END"]
         self.web_host = os.environ["WEB_HOST"]
         self.web_port = int(os.environ["WEB_PORT"])
         self.discovery_sources_json = os.environ["DISCOVERY_SOURCES_JSON"]
