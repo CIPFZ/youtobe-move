@@ -783,10 +783,69 @@ textarea {
 .poster {
   width: 100%;
   aspect-ratio: 16 / 9;
+  display: grid;
+  place-items: center;
   object-fit: cover;
   border-radius: 6px;
   border: 1px solid var(--line);
   background: #e9edf2;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.media-panel {
+  display: grid;
+  gap: 10px;
+  position: sticky;
+  top: 56px;
+}
+
+.media-video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111827;
+}
+
+.media-files {
+  display: grid;
+  gap: 8px;
+}
+
+.media-file-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.media-file-row div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.media-file-row b,
+.media-file-row small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-file-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.media-file-row a {
+  font-size: 12px;
 }
 
 .section {

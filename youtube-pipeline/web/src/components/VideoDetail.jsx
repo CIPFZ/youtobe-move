@@ -155,13 +155,46 @@ export function VideoDetail({ data, configByKey, onAction, onSaved, showToast })
         </section>
       </div>
       <div>
-        <img className="poster" src={`/api/videos/${encodeURIComponent(video.video_id)}/file?type=poster`} alt="" />
-        <div className="actions">
-          <a href={`/api/videos/${encodeURIComponent(video.video_id)}/file?type=merged`} target="_blank" rel="noreferrer"><button>查看视频</button></a>
-          <a href={`/api/videos/${encodeURIComponent(video.video_id)}/file?type=meta`} target="_blank" rel="noreferrer"><button>meta</button></a>
-        </div>
+        <MediaPreview videoId={video.video_id} mediaFiles={data.media_files || {}} />
       </div>
     </div>
+  );
+}
+
+function MediaPreview({ videoId, mediaFiles }) {
+  const base = `/api/videos/${encodeURIComponent(videoId)}/file`;
+  const hasMerged = Boolean(mediaFiles.merged_path);
+  const hasPoster = Boolean(mediaFiles.poster_path);
+  const rows = [
+    ["merged", "合并视频", mediaFiles.merged_path],
+    ["video", "视频流", mediaFiles.video_path],
+    ["audio", "音频流", mediaFiles.audio_path],
+    ["poster", "海报", mediaFiles.poster_path],
+    ["meta", "Meta", mediaFiles.meta_path],
+  ];
+  return (
+    <aside className="media-panel">
+      {hasMerged ? (
+        <video className="media-video" src={`${base}?type=merged`} controls preload="metadata" poster={hasPoster ? `${base}?type=poster` : undefined} />
+      ) : hasPoster ? (
+        <img className="poster" src={`${base}?type=poster`} alt="" />
+      ) : (
+        <div className="poster placeholder">暂无媒体预览</div>
+      )}
+      <div className="media-files">
+        {rows.map(([type, label, path]) => (
+          <div className="media-file-row" key={type}>
+            <div>
+              <b>{label}</b>
+              <small>{path || "未生成"}</small>
+            </div>
+            {path ? (
+              <a href={`${base}?type=${type}`} target="_blank" rel="noreferrer">打开</a>
+            ) : <span className="badge">missing</span>}
+          </div>
+        ))}
+      </div>
+    </aside>
   );
 }
 
