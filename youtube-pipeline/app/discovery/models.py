@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.youtube_api import parse_youtube_duration_seconds
@@ -29,6 +29,7 @@ class VideoCandidate:
     score: float
     source_url: str
     raw: dict[str, Any]
+    source_params: dict[str, Any] = field(default_factory=dict)
 
 
 def candidate_from_youtube_item(
@@ -65,4 +66,5 @@ def candidate_from_youtube_item(
         score=0.0,
         source_url=f"https://www.youtube.com/watch?v={video_id}",
         raw=item,
+        source_params=source.params,
     )

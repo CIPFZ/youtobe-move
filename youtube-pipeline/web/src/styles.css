@@ -446,6 +446,15 @@ textarea {
   font-size: 12px;
 }
 
+.filter-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-alt);
+}
+
 .preview-box {
   margin-top: 8px;
   padding: 12px;

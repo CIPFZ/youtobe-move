@@ -526,6 +526,12 @@ function emptyDiscoveryForm() {
     max_results: "2",
     enabled: "true",
     priority: "100",
+    min_duration_seconds: "",
+    max_duration_seconds: "",
+    min_view_count: "",
+    title_blocklist: "",
+    category_allowlist: "",
+    category_blocklist: "",
   };
 }
 
@@ -546,6 +552,12 @@ function formToSource(form) {
     enabled: form.enabled === "true",
     priority: Number.parseInt(form.priority || "100", 10),
   };
+  for (const key of ["min_duration_seconds", "max_duration_seconds", "min_view_count"]) {
+    if (String(form[key] || "").trim()) source[key] = Number.parseInt(form[key], 10);
+  }
+  for (const key of ["title_blocklist", "category_allowlist", "category_blocklist"]) {
+    if (String(form[key] || "").trim()) source[key] = String(form[key]).trim();
+  }
   if (form.type === "search") {
     source.keyword = form.keyword.trim();
     if (form.order.trim()) source.order = form.order.trim();
@@ -632,6 +644,19 @@ function DiscoverySourcesPanel({ sources, preview, onSave, onDelete, onPreview }
           <span>名称</span>
           <input value={form.name} onChange={(event) => updateField("name", event.target.value)} />
         </label>
+        <div className="filter-box">
+          <h2>过滤覆盖</h2>
+          <div className="draft-row">
+            <label><span>最小时长秒</span><input value={form.min_duration_seconds} onChange={(event) => updateField("min_duration_seconds", event.target.value)} /></label>
+            <label><span>最大时长秒</span><input value={form.max_duration_seconds} onChange={(event) => updateField("max_duration_seconds", event.target.value)} /></label>
+          </div>
+          <label><span>最低播放量</span><input value={form.min_view_count} onChange={(event) => updateField("min_view_count", event.target.value)} /></label>
+          <label><span>标题黑名单</span><input value={form.title_blocklist} onChange={(event) => updateField("title_blocklist", event.target.value)} /></label>
+          <div className="draft-row">
+            <label><span>分类白名单</span><input value={form.category_allowlist} onChange={(event) => updateField("category_allowlist", event.target.value)} /></label>
+            <label><span>分类黑名单</span><input value={form.category_blocklist} onChange={(event) => updateField("category_blocklist", event.target.value)} /></label>
+          </div>
+        </div>
         {form.type === "search" ? (
           <>
             <label><span>关键词</span><input value={form.keyword} onChange={(event) => updateField("keyword", event.target.value)} /></label>

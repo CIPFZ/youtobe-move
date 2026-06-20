@@ -9,6 +9,14 @@ from app.config_service import update_config
 
 
 SUPPORTED_SOURCE_TYPES = {"search", "trending", "channel_uploads"}
+SOURCE_FILTER_INT_FIELDS = ("min_duration_seconds", "max_duration_seconds", "min_view_count")
+SOURCE_FILTER_TEXT_FIELDS = (
+    "title_blocklist",
+    "channel_allowlist",
+    "channel_blocklist",
+    "category_allowlist",
+    "category_blocklist",
+)
 
 
 def _clean_string(value: Any) -> str:
@@ -47,6 +55,17 @@ def normalize_discovery_source(source: dict[str, Any]) -> dict[str, Any]:
     if not (1 <= max_results <= 50):
         raise ValueError("Discovery source max_results must be between 1 and 50")
     result["max_results"] = max_results
+    for key in SOURCE_FILTER_INT_FIELDS:
+        value = source.get(key)
+        if value not in (None, ""):
+            parsed = int(value)
+            if parsed < 0:
+                raise ValueError(f"Discovery source {key} must be >= 0")
+            result[key] = parsed
+    for key in SOURCE_FILTER_TEXT_FIELDS:
+        value = _clean_string(source.get(key))
+        if value:
+            result[key] = value
 
     if source_type == "search":
         keyword = _clean_string(source.get("keyword") or source.get("q"))

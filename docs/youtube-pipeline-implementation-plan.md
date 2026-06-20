@@ -1008,11 +1008,21 @@ P9.5 发现源管理已完成基础版：
   - 支持 `channel_uploads`。
   - `enabled` 默认为 `true`。
   - `priority` 默认为 `100`。
+  - 支持 source 级过滤覆盖：
+    - `min_duration_seconds`
+    - `max_duration_seconds`
+    - `min_view_count`
+    - `title_blocklist`
+    - `channel_allowlist`
+    - `channel_blocklist`
+    - `category_allowlist`
+    - `category_blocklist`
   - `max_results` 限制为 1-50。
   - `search` 必须有 keyword。
   - `channel_uploads` 必须有 channel_id 或 handle。
   - handle 自动补齐 `@`。
 - discovery 执行时会跳过 `enabled=false` 的 source，并按 `priority` 升序执行。
+- source 级过滤只覆盖已配置字段，未配置字段继续使用全局 discovery filter。
 - 新增 Web API：
   - `GET /api/discovery/sources`
   - `POST /api/discovery/sources`
@@ -1030,6 +1040,7 @@ P9.5 发现源管理已完成基础版：
   - 单 source dry-run 预览。
   - 启用/禁用 source。
   - 修改 source priority。
+  - 配置 source 级过滤覆盖。
   - 表单按 source type 显示不同字段。
 - 单元测试覆盖：
   - 类型字段校验。
@@ -1038,11 +1049,11 @@ P9.5 发现源管理已完成基础版：
   - 单 source preview 不入库。
   - disabled source 不参与发现。
   - source 按 priority 排序。
+  - source 级过滤覆盖全局过滤。
 
 P9.5 未完成：
 
 - source 权重。
-- source 级别过滤规则。
 - preview 结果分页和更完整的候选详情展示。
 
 ### 风险点

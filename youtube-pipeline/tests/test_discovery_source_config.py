@@ -55,6 +55,26 @@ class DiscoverySourceConfigTests(unittest.TestCase):
         self.assertTrue(source["enabled"])
         self.assertEqual(source["priority"], 100)
 
+    def test_normalize_keeps_source_filter_overrides(self):
+        source = normalize_discovery_source(
+            {
+                "type": "search",
+                "keyword": "demo",
+                "max_results": 2,
+                "min_duration_seconds": "30",
+                "max_duration_seconds": "300",
+                "min_view_count": "2000",
+                "title_blocklist": "trailer",
+                "category_allowlist": "1,22",
+            }
+        )
+
+        self.assertEqual(source["min_duration_seconds"], 30)
+        self.assertEqual(source["max_duration_seconds"], 300)
+        self.assertEqual(source["min_view_count"], 2000)
+        self.assertEqual(source["title_blocklist"], "trailer")
+        self.assertEqual(source["category_allowlist"], "1,22")
+
     def test_list_discovery_sources_adds_index(self):
         result = list_discovery_source_configs(self.config)
 

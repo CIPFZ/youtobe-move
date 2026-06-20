@@ -159,6 +159,21 @@ class DiscoveryTests(unittest.TestCase):
         self.assertIn("duration_too_long", reasons)
         self.assertIn("view_count_too_low", reasons)
 
+    def test_source_level_filter_overrides_global_filter(self):
+        candidate = self._candidate(view_count=1000)
+        candidate = VideoCandidate(
+            **{
+                **candidate.__dict__,
+                "source_params": {"min_view_count": 2000, "category_allowlist": "1"},
+            }
+        )
+
+        with patch("app.discovery.service.fetch_candidates", return_value=[candidate]):
+            result = discover_videos(self.config, dry_run=True)
+
+        self.assertEqual(result["accepted_count"], 0)
+        self.assertEqual(result["rejected"][0]["reason"], "view_count_too_low")
+
     def test_discover_filters_channel_and_category_rules(self):
         self.config.discovery_channel_blocklist = "UCblocked"
         self.config.discovery_category_allowlist = "1"
