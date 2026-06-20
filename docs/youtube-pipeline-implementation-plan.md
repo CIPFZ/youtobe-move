@@ -909,6 +909,11 @@ P9.2 队列管理已完成基础版：
   - `status`
   - `draft_status`
   - `error_type`
+- 视频列表筛选已下沉到 repository SQL：
+  - `status`
+  - `draft_status`
+  - latest job `error_type`
+  - 避免 Web 层拉取大批量数据后内存过滤。
 - 新增批量操作 API：
   - `POST /api/videos/batch`
 - 批量操作当前支持：
@@ -924,6 +929,7 @@ P9.2 队列管理已完成基础版：
   - 重复 URL 不重复建 job。
   - 批量 URL 部分失败。
   - Web 列表按 draft/error 筛选。
+  - repository SQL 按 draft/error 筛选。
   - 批量操作部分失败。
   - 不支持的批量动作拒绝执行。
   - priority 排序。
@@ -931,7 +937,6 @@ P9.2 队列管理已完成基础版：
 P9.2 未完成：
 
 - 更完整的批量操作，如批量 real publish 预览；真实发布仍不建议批量。
-- 列表筛选目前是 Web 层基础实现，后续数据量变大时需要下沉到 repository SQL。
 
 P9.3 草稿编辑和发布策略已完成基础版：
 

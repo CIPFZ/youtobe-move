@@ -110,20 +110,20 @@ def _list_videos(config: Config, query: dict[str, list[str]]) -> dict[str, Any]:
     with connect(config.db_path) as conn:
         init_schema(conn)
         repo = Repository(conn)
-        fetch_limit = limit if not (draft_status or error_type) else 500
-        videos = repo.list_videos(status=status, limit=fetch_limit, offset=offset)
+        videos = repo.list_videos(
+            status=status,
+            limit=limit,
+            offset=offset,
+            draft_status=draft_status,
+            error_type=error_type,
+        )
         rows: list[dict[str, Any]] = []
         for video in videos:
             video_id = str(video["video_id"])
             latest_download_job = repo.get_latest_job(video_id, "download")
             latest_describe_job = repo.get_latest_job(video_id, "describe")
             latest_publish_job = repo.get_latest_job(video_id, "publish")
-            latest_jobs = [job for job in (latest_download_job, latest_describe_job, latest_publish_job) if job]
             publish_draft = repo.get_publish_draft(video_id, "bilibili")
-            if draft_status and str((publish_draft or {}).get("status") or "") != draft_status:
-                continue
-            if error_type and not any(str(job.get("error_type") or "") == error_type for job in latest_jobs):
-                continue
             rows.append(
                 {
                     "video": video,
@@ -136,7 +136,7 @@ def _list_videos(config: Config, query: dict[str, list[str]]) -> dict[str, Any]:
                 }
             )
     return {
-        "videos": rows[:limit],
+        "videos": rows,
         "limit": limit,
         "offset": offset,
         "status": status,

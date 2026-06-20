@@ -71,18 +71,62 @@ class Repository:
         row = self.conn.execute("SELECT * FROM videos WHERE video_id=?", (video_id,)).fetchone()
         return row_to_dict(row)
 
-    def list_videos(self, status: str | None = None, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    def list_videos(
+        self,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        draft_status: str | None = None,
+        error_type: str | None = None,
+        platform: str = "bilibili",
+    ) -> list[dict[str, Any]]:
+        filters: list[str] = []
+        params: list[Any] = []
         if status:
             ensure_video_status(status)
-            rows = self.conn.execute(
-                "SELECT * FROM videos WHERE status=? ORDER BY priority ASC, updated_at DESC LIMIT ? OFFSET ?",
-                (status, limit, offset),
-            ).fetchall()
-        else:
-            rows = self.conn.execute(
-                "SELECT * FROM videos ORDER BY priority ASC, updated_at DESC LIMIT ? OFFSET ?",
-                (limit, offset),
-            ).fetchall()
+            filters.append("videos.status=?")
+            params.append(status)
+        if draft_status:
+            filters.append(
+                """
+                EXISTS (
+                    SELECT 1 FROM publish_drafts
+                    WHERE publish_drafts.video_id = videos.video_id
+                      AND publish_drafts.platform = ?
+                      AND publish_drafts.status = ?
+                )
+                """
+            )
+            params.extend([platform, draft_status])
+        if error_type:
+            filters.append(
+                """
+                EXISTS (
+                    SELECT 1 FROM jobs
+                    WHERE jobs.video_id = videos.video_id
+                      AND jobs.error_type = ?
+                      AND jobs.id IN (
+                          SELECT MAX(latest_jobs.id)
+                          FROM jobs latest_jobs
+                          WHERE latest_jobs.video_id = videos.video_id
+                          GROUP BY latest_jobs.job_type
+                      )
+                )
+                """
+            )
+            params.append(error_type)
+        where = f"WHERE {' AND '.join(filters)}" if filters else ""
+        params.extend([limit, offset])
+        rows = self.conn.execute(
+            f"""
+            SELECT videos.*
+            FROM videos
+            {where}
+            ORDER BY videos.priority ASC, videos.updated_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            params,
+        ).fetchall()
         return [dict(row) for row in rows]
 
     def list_failures(

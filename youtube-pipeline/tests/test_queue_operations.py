@@ -74,6 +74,45 @@ class QueueOperationsTests(unittest.TestCase):
 
         self.assertEqual([row["video_id"] for row in rows], ["high1234567", "low12345678"])
 
+    def test_list_videos_filters_by_draft_status_in_sql(self):
+        repo = self._repo()
+        repo.upsert_video("abc123def45", "https://www.youtube.com/watch?v=abc123def45", status="ready_to_publish")
+        repo.upsert_video("def123abc45", "https://www.youtube.com/watch?v=def123abc45", status="ready_to_publish")
+        repo.save_publish_draft(
+            "abc123def45",
+            "bilibili",
+            title="Approved",
+            description="body",
+            tags=[],
+            tid=27,
+            status="approved",
+        )
+        repo.save_publish_draft(
+            "def123abc45",
+            "bilibili",
+            title="Pending",
+            description="body",
+            tags=[],
+            tid=27,
+            status="pending",
+        )
+
+        rows = repo.list_videos(status="ready_to_publish", draft_status="approved")
+
+        self.assertEqual([row["video_id"] for row in rows], ["abc123def45"])
+
+    def test_list_videos_filters_by_latest_job_error_type_in_sql(self):
+        repo = self._repo()
+        repo.upsert_video("abc123def45", "https://www.youtube.com/watch?v=abc123def45")
+        old_job_id = repo.create_job("download", video_id="abc123def45")
+        repo.update_job_status(old_job_id, "failed", error="old failure", error_type="network_error")
+        latest_job_id = repo.create_job("download", video_id="abc123def45")
+        repo.update_job_status(latest_job_id, "succeeded")
+
+        rows = repo.list_videos(error_type="network_error")
+
+        self.assertEqual(rows, [])
+
 
 if __name__ == "__main__":
     unittest.main()
