@@ -600,10 +600,90 @@ textarea {
   line-height: 1.7;
 }
 
+.draft-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.draft-state-card {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.draft-state-card.ok {
+  border-color: #b7dfc9;
+}
+
+.draft-state-card.manual {
+  border-color: #8fc7c1;
+}
+
+.draft-state-card.warning {
+  border-color: #f0d28a;
+  background: #fffaf0;
+}
+
+.draft-state-card > span,
+.draft-state-card small,
+.draft-tags > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.draft-state-card strong {
+  min-width: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.source-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.source-pill.ok {
+  color: var(--ok);
+  border-color: #b7dfc9;
+}
+
+.source-pill.manual {
+  color: var(--accent);
+  border-color: #8fc7c1;
+}
+
+.source-pill.warning {
+  color: var(--warning);
+  border-color: #f0d28a;
+}
+
+.draft-warning {
+  grid-column: 1 / -1;
+  padding: 9px 10px;
+  border: 1px solid #f0d28a;
+  border-radius: 6px;
+  background: #fffaf0;
+  color: var(--warning);
+  font-size: 13px;
+}
+
 .draft-form {
   display: grid;
   gap: 10px;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 .draft-form label {
@@ -641,7 +721,7 @@ textarea {
   gap: 10px;
 }
 
-.draft-meta {
+.draft-tags {
   margin-top: 12px;
 }
 
@@ -945,6 +1025,7 @@ textarea {
 
   .config-grid,
   .discovery-layout,
+  .draft-summary,
   .overview-grid,
   .preview-columns,
   .storage-grid,

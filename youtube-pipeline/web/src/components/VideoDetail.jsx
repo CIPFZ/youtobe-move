@@ -95,6 +95,7 @@ export function VideoDetail({ data, configByKey, onAction, onSaved, showToast })
           <h2>发布草稿</h2>
           {draft.title ? (
             <>
+              <DraftSummary draft={draft} />
               <div className="draft-form">
                 <label>
                   <span>标题 <em>{draftForm.title.length}/{draftLimits.title}</em></span>
@@ -133,15 +134,7 @@ export function VideoDetail({ data, configByKey, onAction, onSaved, showToast })
                   <span className="muted">保存后分区来源会标记为 manual。</span>
                 </div>
               </div>
-              <div className="kv draft-meta">
-                <div>当前分区</div><div>{draft.tid || "-"} {draft.tid_label || ""}</div>
-                <div>审核</div><div><span className="badge">{draft.status || "-"}</span> {draft.review_note || ""}</div>
-                <div>来源</div><div>{draft.tid_source || "-"}</div>
-                <div>原因</div><div>{draft.tid_reason || "-"}</div>
-              </div>
-              <div className="badges">
-                {parseTags(draft.tags_json).map((tag) => <span className="badge" key={tag}>{tag}</span>)}
-              </div>
+              <DraftTags draft={draft} />
             </>
           ) : <div className="muted">暂无草稿。</div>}
         </section>
@@ -167,6 +160,49 @@ export function VideoDetail({ data, configByKey, onAction, onSaved, showToast })
           <a href={`/api/videos/${encodeURIComponent(video.video_id)}/file?type=merged`} target="_blank" rel="noreferrer"><button>查看视频</button></a>
           <a href={`/api/videos/${encodeURIComponent(video.video_id)}/file?type=meta`} target="_blank" rel="noreferrer"><button>meta</button></a>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function DraftSummary({ draft }) {
+  const source = draft.tid_source || "-";
+  const tone = sourceTone(source);
+  const isFallback = source === "fallback";
+  return (
+    <div className="draft-summary">
+      <div className="draft-state-card">
+        <span>审核状态</span>
+        <strong><span className={`badge ${draft.status || ""}`}>{draft.status || "-"}</span></strong>
+        {draft.review_note ? <small>{draft.review_note}</small> : null}
+      </div>
+      <div className="draft-state-card">
+        <span>发布分区</span>
+        <strong>{draft.tid || "-"} {draft.tid_label || ""}</strong>
+        <small>{draft.tid_reason || "暂无分区判断原因"}</small>
+      </div>
+      <div className={`draft-state-card ${tone}`}>
+        <span>分区来源</span>
+        <strong><span className={`source-pill ${tone}`}>{sourceLabel(source)}</span></strong>
+        <small>{isFallback ? "fallback 分区需要人工确认后才能真实发布" : "保存草稿后会转为 manual"}</small>
+      </div>
+      {isFallback ? (
+        <div className="draft-warning">
+          当前分区来自兜底策略，真实发布已阻断。请人工选择正确分区并保存草稿。
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DraftTags({ draft }) {
+  const tags = parseTags(draft.tags_json);
+  if (!tags.length) return null;
+  return (
+    <div className="draft-tags">
+      <span>当前标签</span>
+      <div className="badges">
+        {tags.map((tag) => <span className="badge" key={tag}>{tag}</span>)}
       </div>
     </div>
   );
@@ -259,4 +295,18 @@ function validateDraftForm(form) {
   if (tags.some((tag) => tag.length > draftLimits.tagLength)) errors.push(`单个标签不能超过 ${draftLimits.tagLength} 个字符`);
   if (!form.tid) errors.push("请选择发布分区");
   return errors;
+}
+
+function sourceTone(source) {
+  if (source === "llm") return "ok";
+  if (source === "manual") return "manual";
+  if (source === "fallback") return "warning";
+  return "neutral";
+}
+
+function sourceLabel(source) {
+  if (source === "llm") return "LLM 判断";
+  if (source === "manual") return "人工确认";
+  if (source === "fallback") return "兜底策略";
+  return source || "-";
 }
