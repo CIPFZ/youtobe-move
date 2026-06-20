@@ -47,6 +47,9 @@ def build_ytdlp_options(config: Config) -> dict[str, Any]:
         opts["cookiefile"] = config.cookie_file
     if config.proxy:
         opts["proxy"] = config.proxy
+    remote_components = str(getattr(config, "ytdlp_remote_components", "") or "").strip()
+    if remote_components:
+        opts["remote_components"] = [item.strip() for item in remote_components.split(",") if item.strip()]
     return opts
 
 

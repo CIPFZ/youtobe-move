@@ -24,6 +24,7 @@ class Config:
         self.audio_format = os.environ["AUDIO_FORMAT"]
         self.proxy = os.environ["PROXY"]
         self.cookie_file = os.environ["COOKIE_FILE"]
+        self.ytdlp_remote_components = os.environ["YTDLP_REMOTE_COMPONENTS"]
         self.socket_timeout = float(os.environ["SOCKET_TIMEOUT"])
         self.retries = int(os.environ["RETRIES"])
         self.fragment_retries = int(os.environ["FRAGMENT_RETRIES"])

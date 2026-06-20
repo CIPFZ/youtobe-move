@@ -55,6 +55,7 @@ CONFIG_FIELDS: tuple[ConfigField, ...] = (
     ConfigField("STORAGE_CLEANUP_STATUSES", "storage", "string"),
     ConfigField("PROXY", "download", "string"),
     ConfigField("COOKIE_FILE", "download", "string"),
+    ConfigField("YTDLP_REMOTE_COMPONENTS", "download", "string"),
     ConfigField("VIDEO_FORMAT", "download", "string"),
     ConfigField("AUDIO_FORMAT", "download", "string"),
     ConfigField("SOCKET_TIMEOUT", "download", "float", minimum=1, maximum=300),
