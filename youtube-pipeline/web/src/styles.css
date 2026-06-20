@@ -755,6 +755,50 @@ textarea {
   overflow: auto;
 }
 
+.video-table .ant-table {
+  border-top: 1px solid var(--line);
+}
+
+.video-table .active-row > td {
+  background: #eef8f6 !important;
+}
+
+.video-table-title {
+  max-width: 100%;
+}
+
+.table-thumb {
+  flex: 0 0 auto;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #e9edf2;
+}
+
+.table-thumb.placeholder {
+  width: 76px;
+  height: 46px;
+}
+
+.table-title-link {
+  max-width: 100%;
+  height: auto;
+  padding: 0;
+  border: 0;
+  font-weight: 650;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+}
+
+.video-id {
+  display: inline-flex;
+  max-width: 100%;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .video-row {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
