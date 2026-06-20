@@ -196,20 +196,39 @@ function DiscoveryPreview({ preview }) {
         <span className="badge ready_to_publish">通过 {preview.accepted_count}</span>
         <span className="badge failed">拒绝 {preview.rejected_count}</span>
       </div>
-      <div className="preview-list">
-        {accepted.slice(0, 8).map((item) => (
-          <div className="preview-row" key={`accepted-${item.video_id}`}>
-            <b>{item.title || item.video_id}</b>
-            <span>{item.channel || "-"} · {fmtDuration(item.duration)} · {fmtCount(item.view_count)} views</span>
+      <div className="preview-columns">
+        <div>
+          <h3>通过</h3>
+          <div className="preview-list">
+            {accepted.length ? accepted.slice(0, 8).map((item) => (
+              <PreviewCandidate item={item} key={`accepted-${item.video_id}`} />
+            )) : <div className="muted">暂无通过候选。</div>}
           </div>
-        ))}
-        {rejected.slice(0, 8).map((item) => (
-          <div className="preview-row rejected" key={`rejected-${item.candidate?.video_id}`}>
-            <b>{item.candidate?.title || item.candidate?.video_id}</b>
-            <span>{item.reason}</span>
+        </div>
+        <div>
+          <h3>拒绝</h3>
+          <div className="preview-list">
+            {rejected.length ? rejected.slice(0, 8).map((item) => (
+              <PreviewCandidate item={item.candidate || {}} reason={item.reason} rejected key={`rejected-${item.candidate?.video_id || item.reason}`} />
+            )) : <div className="muted">暂无拒绝候选。</div>}
           </div>
-        ))}
+        </div>
       </div>
     </section>
+  );
+}
+
+function PreviewCandidate({ item, reason = "", rejected = false }) {
+  return (
+    <div className={`preview-row${rejected ? " rejected" : ""}`}>
+      <b>{item.title || item.video_id || "-"}</b>
+      <span>{item.channel || "-"} · {fmtDuration(item.duration)} · {fmtCount(item.view_count)} views</span>
+      <div className="preview-meta">
+        {item.score !== undefined ? <span className="badge">score {Number(item.score).toFixed(1)}</span> : null}
+        {item.category ? <span className="badge">{item.category}</span> : null}
+        {item.published_at ? <span className="badge">{item.published_at}</span> : null}
+      </div>
+      {reason ? <div className="preview-reason">{reason}</div> : null}
+    </div>
   );
 }

@@ -767,6 +767,18 @@ textarea {
   margin-top: 10px;
 }
 
+.preview-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.preview-columns h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
 .preview-row {
   display: grid;
   gap: 3px;
@@ -789,6 +801,20 @@ textarea {
 
 .preview-row span {
   color: var(--muted);
+  font-size: 12px;
+}
+
+.preview-meta {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.preview-reason {
+  padding: 6px;
+  border-radius: 6px;
+  background: #fff4f3;
+  color: var(--danger);
   font-size: 12px;
 }
 
@@ -920,6 +946,7 @@ textarea {
   .config-grid,
   .discovery-layout,
   .overview-grid,
+  .preview-columns,
   .storage-grid,
   .stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -940,6 +967,7 @@ textarea {
   .stats,
   .overview-grid,
   .discovery-layout,
+  .preview-columns,
   .storage-grid,
   .config-grid {
     grid-template-columns: 1fr;
