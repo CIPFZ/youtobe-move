@@ -253,15 +253,30 @@ function pageItems(items, page, pageSize) {
 }
 
 function PreviewCandidate({ item, reason = "", rejected = false }) {
+  const detail = item.score_detail || {};
+  const sourceName = item.source_name || detail.source_name || "";
+  const sourceQuery = item.source_query || detail.source_query || "";
+  const sourceWeight = detail.source_weight ?? item.source_params?.score_weight;
+  const sourcePriority = detail.source_priority ?? item.source_params?.priority;
   return (
     <div className={`preview-row${rejected ? " rejected" : ""}`}>
       <b>{item.title || item.video_id || "-"}</b>
       <span>{item.channel || "-"} · {fmtDuration(item.duration)} · {fmtCount(item.view_count)} views</span>
       <div className="preview-meta">
         {item.score !== undefined ? <span className="badge">score {Number(item.score).toFixed(1)}</span> : null}
+        {sourceWeight !== undefined ? <span className="badge">weight {sourceWeight}</span> : null}
+        {sourcePriority !== undefined ? <span className="badge">P{sourcePriority}</span> : null}
+        {item.source_type ? <span className="badge">{item.source_type}</span> : null}
         {item.category ? <span className="badge">{item.category}</span> : null}
         {item.published_at ? <span className="badge">{item.published_at}</span> : null}
       </div>
+      <div className="preview-detail-grid">
+        <span>video</span><span>{item.video_id || "-"}</span>
+        <span>source</span><span>{sourceName || "-"}</span>
+        <span>query</span><span>{sourceQuery || "-"}</span>
+        <span>channel</span><span>{item.channel_id || "-"}</span>
+      </div>
+      {item.source_url ? <a className="preview-link" href={item.source_url} target="_blank" rel="noreferrer">打开原视频</a> : null}
       {reason ? <div className="preview-reason">{reason}</div> : null}
     </div>
   );

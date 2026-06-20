@@ -97,7 +97,7 @@ class DiscoveryTests(unittest.TestCase):
 
     def test_preview_discovery_source_does_not_insert(self):
         candidates = [
-            self._candidate(video_id="abc123def45"),
+            VideoCandidate(**{**self._candidate(video_id="abc123def45").__dict__, "source_params": {"score_weight": 1.5, "priority": 8}}),
             self._candidate(video_id="small123456", view_count=99),
         ]
 
@@ -107,6 +107,9 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(result["source"]["index"], 0)
         self.assertEqual(result["candidate_count"], 2)
         self.assertEqual(result["accepted_count"], 1)
+        self.assertEqual(result["accepted"][0]["score_detail"]["source_weight"], 1.5)
+        self.assertEqual(result["accepted"][0]["score_detail"]["source_priority"], 8)
+        self.assertEqual(result["accepted"][0]["score_detail"]["source_query"], "animated short")
         self.assertEqual(result["rejected"][0]["reason"], "view_count_too_low")
         with connect(self.db_path) as conn:
             init_schema(conn)

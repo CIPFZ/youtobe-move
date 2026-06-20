@@ -1092,6 +1092,13 @@ P9.5 发现源管理已完成基础版：
   - 配置 source 级过滤覆盖。
   - 表单按 source type 显示不同字段。
   - preview 结果支持通过/拒绝列表分页查看。
+  - preview 候选详情增强：
+    - score
+    - source type/name/query
+    - source weight/priority
+    - video_id/channel_id
+    - category/published_at
+    - 原视频链接
 - 单元测试覆盖：
   - 类型字段校验。
   - 列表 index。
@@ -1100,11 +1107,12 @@ P9.5 发现源管理已完成基础版：
   - disabled source 不参与发现。
   - source 按 priority 排序。
   - source score weight 影响候选排序。
+  - preview 返回 score detail。
   - source 级过滤覆盖全局过滤。
 
 P9.5 未完成：
 
-- 更完整的候选详情展示。
+- 暂无。后续可基于实际运营反馈继续优化发现源质量分析。
 
 P9.6 Web 页面重构已完成基础版：
 

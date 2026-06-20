@@ -1247,6 +1247,33 @@ textarea {
   flex-wrap: wrap;
 }
 
+.preview-detail-grid {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 4px 8px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.preview-detail-grid span {
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.preview-detail-grid span:nth-child(odd) {
+  color: var(--muted);
+}
+
+.preview-link {
+  width: fit-content;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
 .preview-reason {
   padding: 6px;
   border-radius: 6px;

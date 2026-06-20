@@ -20,6 +20,15 @@ logger = logging.getLogger("youtube-pipeline")
 def candidate_summary(candidate: VideoCandidate) -> dict[str, Any]:
     data = asdict(candidate)
     data.pop("raw", None)
+    source_params = candidate.source_params or {}
+    data["score_detail"] = {
+        "score": candidate.score,
+        "source_weight": source_params.get("score_weight", 1.0),
+        "source_priority": source_params.get("priority", 100),
+        "source_type": candidate.source_type,
+        "source_name": candidate.source_name,
+        "source_query": candidate.source_query,
+    }
     return data
 
 
