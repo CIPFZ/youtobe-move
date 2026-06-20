@@ -1399,6 +1399,69 @@ textarea {
   white-space: nowrap;
 }
 
+.job-table {
+  display: grid;
+}
+
+.job-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(190px, 0.7fr) minmax(260px, 1.2fr) minmax(120px, 0.4fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.job-row:hover {
+  background: #fbfcfd;
+}
+
+.job-row:last-child {
+  border-bottom: 0;
+}
+
+.job-row button:first-child {
+  display: grid;
+  height: auto;
+  justify-items: start;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.job-row > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.job-row b,
+.job-row span,
+.job-row p,
+.job-row small {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.job-row span,
+.job-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.job-row p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .toast {
   position: fixed;
   right: 18px;
@@ -1466,6 +1529,11 @@ textarea {
   }
 
   .failure-row {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .job-row {
     grid-template-columns: 1fr;
     gap: 7px;
   }

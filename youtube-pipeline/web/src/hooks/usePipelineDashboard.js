@@ -15,6 +15,8 @@ export function usePipelineDashboard(showToast) {
   const [eventFilters, setEventFilters] = useState({ module: "", limit: 30, offset: 0 });
   const [failures, setFailures] = useState(null);
   const [failureFilters, setFailureFilters] = useState({ jobType: "", errorType: "", limit: 30, offset: 0 });
+  const [jobs, setJobs] = useState(null);
+  const [jobFilters, setJobFilters] = useState({ jobType: "", status: "", errorType: "", limit: 30, offset: 0 });
   const [filters, setFilters] = useState({ status: "", draftStatus: "", errorType: "" });
   const [selectedVideoIds, setSelectedVideoIds] = useState([]);
   const [addUrls, setAddUrls] = useState("");
@@ -55,6 +57,17 @@ export function usePipelineDashboard(showToast) {
     setFailures(await api(`/api/failures?${params.toString()}`));
   }
 
+  async function loadJobs(nextFilters = jobFilters) {
+    const params = new URLSearchParams({
+      limit: String(nextFilters.limit || 30),
+      offset: String(nextFilters.offset || 0),
+    });
+    if (nextFilters.jobType) params.set("job_type", nextFilters.jobType);
+    if (nextFilters.status) params.set("status", nextFilters.status);
+    if (nextFilters.errorType) params.set("error_type", nextFilters.errorType);
+    setJobs(await api(`/api/jobs?${params.toString()}`));
+  }
+
   async function selectVideo(videoId) {
     setSelectedId(videoId);
     setDetail(await api(`/api/videos/${encodeURIComponent(videoId)}`));
@@ -87,7 +100,7 @@ export function usePipelineDashboard(showToast) {
   async function refreshAll() {
     setLoading(true);
     try {
-      await Promise.all([loadAll(), loadConfig(), loadStorage(), loadDiscoverySources(), loadEvents(), loadFailures()]);
+      await Promise.all([loadAll(), loadConfig(), loadStorage(), loadDiscoverySources(), loadEvents(), loadFailures(), loadJobs()]);
     } catch (error) {
       showToast(error.message);
     } finally {
@@ -127,6 +140,14 @@ export function usePipelineDashboard(showToast) {
     setFailureFilters((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
       loadFailures(next).catch((error) => showToast(error.message));
+      return next;
+    });
+  }
+
+  function updateJobFilters(updater) {
+    setJobFilters((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      loadJobs(next).catch((error) => showToast(error.message));
       return next;
     });
   }
@@ -317,6 +338,8 @@ export function usePipelineDashboard(showToast) {
       eventFilters,
       failures,
       failureFilters,
+      jobs,
+      jobFilters,
       filters,
       selectedVideoIds,
       addUrls,
@@ -332,6 +355,7 @@ export function usePipelineDashboard(showToast) {
       updateFilters,
       updateEventFilters,
       updateFailureFilters,
+      updateJobFilters,
       applyQueuePreset,
       loadAll,
       loadConfig,
@@ -339,6 +363,7 @@ export function usePipelineDashboard(showToast) {
       loadDiscoverySources,
       loadEvents,
       loadFailures,
+      loadJobs,
       refreshAll,
       selectVideo,
       runVideoAction,

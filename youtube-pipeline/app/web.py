@@ -204,6 +204,27 @@ def _list_failures(config: Config, query: dict[str, list[str]]) -> dict[str, Any
     }
 
 
+def _list_jobs(config: Config, query: dict[str, list[str]]) -> dict[str, Any]:
+    limit = _parse_int((query.get("limit") or [""])[0], 30, minimum=1, maximum=200)
+    offset = _parse_int((query.get("offset") or [""])[0], 0, minimum=0, maximum=100000)
+    job_type = (query.get("job_type") or [""])[0].strip() or None
+    status = (query.get("status") or [""])[0].strip() or None
+    error_type = (query.get("error_type") or [""])[0].strip() or None
+    with connect(config.db_path) as conn:
+        init_schema(conn)
+        repo = Repository(conn)
+        jobs = repo.list_jobs(limit=limit, offset=offset, job_type=job_type, status=status, error_type=error_type)
+    return {
+        "jobs": jobs,
+        "limit": limit,
+        "offset": offset,
+        "job_type": job_type,
+        "status": status,
+        "error_type": error_type,
+        "has_more": len(jobs) == limit,
+    }
+
+
 def _media_file_response(config: Config, video_id: str, file_type: str) -> tuple[Path, str]:
     media_files = _video_detail(config, video_id)["media_files"]
     if not media_files:
@@ -349,6 +370,13 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
 
         if method == "GET" and path == "/api/failures":
             self._send_json(_list_failures(self.config, query))
+            return
+
+        if method == "GET" and path == "/api/jobs":
+            try:
+                self._send_json(_list_jobs(self.config, query))
+            except ValueError as exc:
+                raise WebError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
             return
 
         if method == "GET" and path == "/api/storage":

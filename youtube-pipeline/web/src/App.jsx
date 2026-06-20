@@ -7,6 +7,7 @@ import { DetailSection } from "./sections/DetailSection";
 import { DiscoverySection } from "./sections/DiscoverySection";
 import { EventsSection } from "./sections/EventsSection";
 import { FailuresSection } from "./sections/FailuresSection";
+import { JobsSection } from "./sections/JobsSection";
 import { OverviewSection } from "./sections/OverviewSection";
 import { QueueSection } from "./sections/QueueSection";
 import { StorageSection } from "./sections/StorageSection";
@@ -51,6 +52,7 @@ function App() {
         <a href="#queue">队列</a>
         <a href="#failures">失败</a>
         <a href="#worker">Worker</a>
+        <a href="#jobs">Jobs</a>
         <a href="#detail">详情</a>
         <a href="#config">配置</a>
         <a href="#storage">存储</a>
@@ -63,6 +65,7 @@ function App() {
         <QueueSection state={state} actions={actions} />
         <FailuresSection state={state} actions={actions} />
         <WorkerSection state={state} actions={actions} />
+        <JobsSection state={state} actions={actions} />
         <DetailSection state={state} actions={actions} showToast={showToast} />
         <ConfigSection state={state} actions={actions} />
         <StorageSection state={state} actions={actions} />

@@ -8,7 +8,7 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.publish_service import update_publish_draft
-from app.web import WebError, _handle_action, _handle_batch_action, _list_events, _list_failures, _list_videos, _status_settings
+from app.web import WebError, _handle_action, _handle_batch_action, _list_events, _list_failures, _list_jobs, _list_videos, _status_settings
 
 
 class WebTests(unittest.TestCase):
@@ -111,6 +111,21 @@ class WebTests(unittest.TestCase):
         self.assertEqual(matched["failures"][0]["video_id"], "def123abc45")
         self.assertEqual(matched["failures"][0]["job_type"], "publish")
         self.assertEqual(missed["failures"], [])
+
+    def test_list_jobs_filters_by_status_type_and_error(self):
+        self.repo.upsert_video("abc123def45", "https://www.youtube.com/watch?v=abc123def45", title="Video")
+        download_job_id = self.repo.create_job("download", video_id="abc123def45")
+        self.repo.update_job_status(download_job_id, "failed", error="network failed", error_type="network_error")
+        self.repo.create_job("publish", video_id="abc123def45")
+        self.conn.commit()
+
+        matched = _list_jobs(self.config, {"job_type": ["download"], "status": ["failed"], "error_type": ["network_error"]})
+        missed = _list_jobs(self.config, {"job_type": ["publish"], "status": ["failed"]})
+
+        self.assertEqual(len(matched["jobs"]), 1)
+        self.assertEqual(matched["jobs"][0]["video_title"], "Video")
+        self.assertEqual(matched["jobs"][0]["job_type"], "download")
+        self.assertEqual(missed["jobs"], [])
 
     def test_real_publish_requires_confirm(self):
         with self.assertRaises(WebError) as ctx:

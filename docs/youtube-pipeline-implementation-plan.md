@@ -724,6 +724,12 @@ POST /api/videos/<video_id>/skip
 - `status` 增加 `job_lock_status`，Web 总览展示 running/locked 数。
 - Web 视频详情展示 job 的 `lock_owner` 和 `locked_at`。
 - Web 视频详情会根据 `JOB_LEASE_SECONDS` 标记 locked job 是否已超时。
+- 新增独立 Jobs 管理区：
+  - 新增 `GET /api/jobs`。
+  - 支持按 `job_type`、`status`、`error_type` 筛选。
+  - 支持 `limit` 和 `offset` 分页。
+  - 页面展示 job id、job_type、status、error_type、attempts、错误/重试/锁信息。
+  - 可从 job 记录进入对应视频详情。
 - 单元测试覆盖：
   - job 领取后阻止第二个 worker 重复领取
   - stale running download job 恢复为 pending，视频回到 selected
@@ -732,7 +738,6 @@ POST /api/videos/<video_id>/skip
 
 未完成：
 
-- 独立 jobs 列表页。
 - 真正多进程 worker 的压力测试。
 
 ### 验收标准

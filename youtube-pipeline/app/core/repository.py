@@ -625,6 +625,46 @@ class Repository:
         ).fetchone()
         return row_to_dict(row)
 
+    def list_jobs(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        job_type: str | None = None,
+        status: str | None = None,
+        error_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        filters: list[str] = []
+        params: list[Any] = []
+        if job_type:
+            filters.append("jobs.job_type=?")
+            params.append(job_type)
+        if status:
+            if status not in JOB_STATUSES:
+                raise ValueError(f"Unknown job status: {status}")
+            filters.append("jobs.status=?")
+            params.append(status)
+        if error_type:
+            filters.append("jobs.error_type=?")
+            params.append(error_type)
+        where = f"WHERE {' AND '.join(filters)}" if filters else ""
+        params.extend([limit, offset])
+        rows = self.conn.execute(
+            f"""
+            SELECT
+                jobs.*,
+                videos.title AS video_title,
+                videos.status AS video_status,
+                videos.channel AS video_channel
+            FROM jobs
+            LEFT JOIN videos ON videos.video_id = jobs.video_id
+            {where}
+            ORDER BY jobs.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def count_jobs_by_type_status(self) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
