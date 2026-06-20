@@ -1,5 +1,7 @@
 import tempfile
+import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from app.core.db import connect
@@ -114,6 +116,41 @@ class CoreRepositoryTests(unittest.TestCase):
         self.assertEqual(claimed["lock_owner"], "worker-a")
         self.assertTrue(claimed["locked_at"])
         self.assertIsNone(second)
+
+    def test_concurrent_workers_do_not_claim_duplicate_jobs(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        db_path = Path(temp_dir.name) / "pipeline.db"
+        self.addCleanup(temp_dir.cleanup)
+        job_count = 12
+        worker_count = 6
+        with connect(db_path) as conn:
+            init_schema(conn)
+            repo = Repository(conn)
+            for index in range(job_count):
+                video_id = f"abc123d{index:04d}"
+                repo.upsert_video(video_id, f"https://www.youtube.com/watch?v={video_id}", status="selected")
+                repo.create_job("download", video_id=video_id)
+            conn.commit()
+
+        def claim_jobs(worker_id: str) -> list[int]:
+            claimed_ids: list[int] = []
+            with connect(db_path) as conn:
+                init_schema(conn)
+                repo = Repository(conn)
+                for _ in range(job_count * 2):
+                    claimed = repo.claim_pending_job("download", worker_id, lease_seconds=1800)
+                    if claimed:
+                        claimed_ids.append(int(claimed["id"]))
+                    else:
+                        time.sleep(0.005)
+            return claimed_ids
+
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            results = list(executor.map(lambda index: claim_jobs(f"worker-{index}"), range(worker_count)))
+
+        claimed_job_ids = [job_id for worker_result in results for job_id in worker_result]
+        self.assertEqual(len(claimed_job_ids), job_count)
+        self.assertEqual(len(set(claimed_job_ids)), job_count)
 
     def test_recover_stale_running_job_restores_video_and_job(self):
         repo = self._repo()

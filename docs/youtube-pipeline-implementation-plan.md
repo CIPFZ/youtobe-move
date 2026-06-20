@@ -361,10 +361,11 @@ youtube-pipeline/app/worker/
 - 单元测试覆盖发布禁用、发布启用 dry-run、阶段失败继续运行。
 - 单元测试覆盖 discovery 低水位跳过策略。
 - 单元测试覆盖 status/retry/skip 的主要规则。
+- 多 worker 并发领取压力测试已覆盖：多个独立 SQLite 连接同时领取 pending jobs，不会重复领取同一个 job。
 
 未完成：
 
-- 多 worker 压力测试。
+- 暂无。后续可在真实生产库规模下继续压测。
 
 ## P4：discovery 自动发现
 
@@ -732,13 +733,14 @@ POST /api/videos/<video_id>/skip
   - 可从 job 记录进入对应视频详情。
 - 单元测试覆盖：
   - job 领取后阻止第二个 worker 重复领取
+  - 多 worker 并发领取不会重复 claim 同一个 job
   - stale running download job 恢复为 pending，视频回到 selected
   - download/describe/publish-next 尊重延迟重试
   - worker-run 增加 recover 步骤
 
 未完成：
 
-- 真正多进程 worker 的压力测试。
+- 暂无。后续可补真实多进程端到端压测。
 
 ### 验收标准
 
