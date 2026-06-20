@@ -19,11 +19,25 @@ export function QueueSection({ state, actions }) {
     setAddSourceLabel,
     setSelectedVideoIds,
     updateFilters,
+    applyQueuePreset,
     addQueueUrls,
     runBatchAction,
     toggleSelectedVideo,
     selectVideo,
   } = actions;
+  const activeFilters = [
+    filters.status ? `状态 ${filters.status}` : "",
+    filters.draftStatus ? `草稿 ${filters.draftStatus}` : "",
+    filters.errorType ? `错误 ${filters.errorType}` : "",
+  ].filter(Boolean);
+  const presetButtons = [
+    ["all", "全部"],
+    ["failed", "失败"],
+    ["ready", "待发布"],
+    ["pendingDraft", "待审核"],
+    ["approvedDraft", "已通过"],
+    ["published", "已发布"],
+  ];
 
   return (
     <section className="panel" id="queue">
@@ -42,6 +56,17 @@ export function QueueSection({ state, actions }) {
             <option value="">错误全部</option>
             {errorOptions.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
+        </div>
+      </div>
+      <div className="queue-filter-bar">
+        <div className="segmented">
+          {presetButtons.map(([preset, label]) => (
+            <button key={preset} onClick={() => applyQueuePreset(preset)}>{label}</button>
+          ))}
+        </div>
+        <div className="filter-summary">
+          {activeFilters.length ? activeFilters.map((item) => <span className="badge" key={item}>{item}</span>) : <span className="muted">当前显示全部队列。</span>}
+          {activeFilters.length ? <button onClick={() => applyQueuePreset("all")}>清除筛选</button> : null}
         </div>
       </div>
       <div className="add-url-box">

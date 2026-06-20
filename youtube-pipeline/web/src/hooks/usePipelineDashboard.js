@@ -81,6 +81,18 @@ export function usePipelineDashboard(showToast) {
     });
   }
 
+  function applyQueuePreset(preset) {
+    const presets = {
+      all: { status: "", draftStatus: "", errorType: "" },
+      failed: { status: "failed", draftStatus: "", errorType: "" },
+      ready: { status: "ready_to_publish", draftStatus: "", errorType: "" },
+      pendingDraft: { status: "ready_to_publish", draftStatus: "pending", errorType: "" },
+      approvedDraft: { status: "ready_to_publish", draftStatus: "approved", errorType: "" },
+      published: { status: "published", draftStatus: "", errorType: "" },
+    };
+    updateFilters(presets[preset] || presets.all);
+  }
+
   async function runVideoAction(videoId, action) {
     const body = {};
     if (action === "publish") {
@@ -275,6 +287,7 @@ export function usePipelineDashboard(showToast) {
       setAddSourceLabel,
       setSelectedVideoIds,
       updateFilters,
+      applyQueuePreset,
       loadAll,
       loadConfig,
       loadStorage,

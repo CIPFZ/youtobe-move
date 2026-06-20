@@ -314,6 +314,38 @@ main {
   background: #fff;
 }
 
+.queue-filter-bar {
+  display: grid;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.segmented {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.segmented button {
+  height: 30px;
+  padding: 0 10px;
+  background: var(--panel-alt);
+}
+
+.filter-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-summary button {
+  height: 28px;
+  padding: 0 9px;
+}
+
 textarea {
   width: 100%;
   min-height: 76px;
