@@ -12,7 +12,7 @@ export function DiscoverySection({ state, actions }) {
   } = actions;
 
   return (
-    <section className="panel wide">
+    <section className="panel wide" id="discovery">
       <div className="panel-head">
         <h2>发现源</h2>
         <div className="toolbar">

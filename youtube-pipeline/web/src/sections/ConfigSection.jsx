@@ -7,7 +7,7 @@ export function ConfigSection({ state, actions }) {
   const { loadConfig, saveConfig } = actions;
 
   return (
-    <section className="panel wide">
+    <section className="panel wide" id="config">
       <div className="panel-head">
         <h2>配置</h2>
         <div className="toolbar">

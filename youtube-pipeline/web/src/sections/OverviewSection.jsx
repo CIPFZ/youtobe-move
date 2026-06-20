@@ -61,7 +61,7 @@ export function OverviewSection({ state }) {
   ];
 
   return (
-    <section className="panel wide overview-panel">
+    <section className="panel wide overview-panel" id="overview">
       <div className="panel-head">
         <h2>总览</h2>
         <div className="muted">

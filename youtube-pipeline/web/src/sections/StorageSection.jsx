@@ -7,7 +7,7 @@ export function StorageSection({ state, actions }) {
   const { loadStorage, runStorageCleanup } = actions;
 
   return (
-    <section className="panel wide">
+    <section className="panel wide" id="storage">
       <div className="panel-head">
         <h2>存储</h2>
         <div className="toolbar">

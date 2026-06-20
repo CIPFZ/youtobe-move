@@ -5,7 +5,7 @@ export function DetailSection({ state, actions, showToast }) {
   const { loadAll, runVideoAction } = actions;
 
   return (
-    <section className="panel">
+    <section className="panel" id="detail">
       <div className="panel-head">
         <h2>详情</h2>
         <div className="muted">{selectedId || "未选择"}</div>

@@ -43,6 +43,15 @@ function App() {
         </div>
       </header>
 
+      <nav className="page-nav" aria-label="管理区导航">
+        <a href="#overview">总览</a>
+        <a href="#queue">队列</a>
+        <a href="#detail">详情</a>
+        <a href="#config">配置</a>
+        <a href="#storage">存储</a>
+        <a href="#discovery">发现源</a>
+      </nav>
+
       <main>
         <OverviewSection state={state} />
         <QueueSection state={state} actions={actions} />

@@ -26,7 +26,7 @@ export function QueueSection({ state, actions }) {
   } = actions;
 
   return (
-    <section className="panel">
+    <section className="panel" id="queue">
       <div className="panel-head">
         <h2>队列</h2>
         <div className="toolbar">
