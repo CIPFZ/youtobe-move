@@ -724,10 +724,43 @@ textarea {
   margin-top: 12px;
 }
 
+.config-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.config-group {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.config-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-alt);
+}
+
+.config-group-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.config-group-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .config-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(160px, 1fr));
   gap: 12px;
+  padding: 12px;
 }
 
 .config-field {
@@ -736,8 +769,26 @@ textarea {
 }
 
 .config-field label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.config-field label span {
+  color: var(--danger);
+}
+
+.config-field textarea {
+  min-height: 112px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.config-field.sensitive input {
+  border-color: #f0d28a;
 }
 
 .config-path {

@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { api } from "../api";
-import { configFields } from "../constants";
 import { flattenConfig } from "../format";
 
 export function usePipelineDashboard(showToast) {
@@ -138,14 +137,15 @@ export function usePipelineDashboard(showToast) {
 
   async function saveConfig() {
     const values = {};
-    for (const key of configFields) {
+    const elements = document.querySelectorAll("[data-config-key]");
+    for (const element of elements) {
+      const key = element.dataset.configKey;
       const field = configByKey[key];
       if (!field) continue;
-      const element = document.querySelector(`[data-config-key="${key}"]`);
-      if (!element) continue;
       if (field.type === "bool") values[key] = element.value === "true";
       else if (field.type === "int") values[key] = Number.parseInt(element.value || "0", 10);
       else if (field.type === "float") values[key] = Number.parseFloat(element.value || "0");
+      else if (field.type === "json") values[key] = element.value;
       else values[key] = element.value;
     }
     try {
