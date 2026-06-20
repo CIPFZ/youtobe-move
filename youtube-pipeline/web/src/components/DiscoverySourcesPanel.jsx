@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Save, Search } from "lucide-react";
 import { fmtCount, fmtDuration } from "../format";
 import { IconButton } from "./IconButton";
@@ -185,9 +185,18 @@ export function DiscoverySourcesPanel({ sources, preview, onSave, onDelete, onPr
 }
 
 function DiscoveryPreview({ preview }) {
+  const [acceptedPage, setAcceptedPage] = useState(0);
+  const [rejectedPage, setRejectedPage] = useState(0);
+  const pageSize = 8;
+  useEffect(() => {
+    setAcceptedPage(0);
+    setRejectedPage(0);
+  }, [preview]);
   if (!preview) return <div className="muted">选择发现源后可执行预览。</div>;
   const accepted = preview.accepted || [];
   const rejected = preview.rejected || [];
+  const acceptedItems = pageItems(accepted, acceptedPage, pageSize);
+  const rejectedItems = pageItems(rejected, rejectedPage, pageSize);
   return (
     <section className="preview-box">
       <h2>预览结果</h2>
@@ -198,17 +207,17 @@ function DiscoveryPreview({ preview }) {
       </div>
       <div className="preview-columns">
         <div>
-          <h3>通过</h3>
+          <PreviewColumnHead title="通过" page={acceptedPage} pageSize={pageSize} total={accepted.length} onPage={setAcceptedPage} />
           <div className="preview-list">
-            {accepted.length ? accepted.slice(0, 8).map((item) => (
+            {acceptedItems.length ? acceptedItems.map((item) => (
               <PreviewCandidate item={item} key={`accepted-${item.video_id}`} />
             )) : <div className="muted">暂无通过候选。</div>}
           </div>
         </div>
         <div>
-          <h3>拒绝</h3>
+          <PreviewColumnHead title="拒绝" page={rejectedPage} pageSize={pageSize} total={rejected.length} onPage={setRejectedPage} />
           <div className="preview-list">
-            {rejected.length ? rejected.slice(0, 8).map((item) => (
+            {rejectedItems.length ? rejectedItems.map((item) => (
               <PreviewCandidate item={item.candidate || {}} reason={item.reason} rejected key={`rejected-${item.candidate?.video_id || item.reason}`} />
             )) : <div className="muted">暂无拒绝候选。</div>}
           </div>
@@ -216,6 +225,25 @@ function DiscoveryPreview({ preview }) {
       </div>
     </section>
   );
+}
+
+function PreviewColumnHead({ title, page, pageSize, total, onPage }) {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  return (
+    <div className="preview-column-head">
+      <h3>{title}</h3>
+      <div>
+        <button disabled={page <= 0} onClick={() => onPage(Math.max(0, page - 1))}>上一页</button>
+        <span>{Math.min(page + 1, pageCount)}/{pageCount}</span>
+        <button disabled={page + 1 >= pageCount} onClick={() => onPage(page + 1)}>下一页</button>
+      </div>
+    </div>
+  );
+}
+
+function pageItems(items, page, pageSize) {
+  const start = page * pageSize;
+  return items.slice(start, start + pageSize);
 }
 
 function PreviewCandidate({ item, reason = "", rejected = false }) {

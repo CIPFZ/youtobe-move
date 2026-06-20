@@ -1140,9 +1140,33 @@ textarea {
   margin-top: 12px;
 }
 
-.preview-columns h3 {
+.preview-column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.preview-column-head h3 {
   margin: 0;
   font-size: 13px;
+}
+
+.preview-column-head div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-column-head button {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.preview-column-head span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .preview-row {
