@@ -148,32 +148,17 @@ export function VideoDetail({ data, configByKey, onAction, onSaved, showToast })
 
         <section className="section">
           <h2>任务状态</h2>
-          {jobs.length ? jobs.map(([name, job]) => {
-            const attempts = `${job.attempts || 0}/${job.max_attempts || 0}`;
-            const lock = job.locked_at ? `lock ${job.lock_owner || "-"} ${job.locked_at}` : "";
-            const text = [job.error_type, job.next_run_at ? `next ${job.next_run_at}` : "", lock, job.error].filter(Boolean).join(" · ");
-            return <div className="event" key={name}><b>{name}</b> · <span className={`badge ${job.status}`}>{job.status}</span> · {attempts}<div className="muted">{text || "-"}</div></div>;
-          }) : <div className="muted">暂无任务记录。</div>}
+          <JobTimeline jobs={jobs} />
         </section>
 
         <section className="section">
           <h2>发布记录</h2>
-          {records.length ? records.map((record) => (
-            <div className="event" key={record.id}>{record.platform} · {record.account} · {record.status} · {record.published_at || record.created_at}</div>
-          )) : <div className="muted">暂无发布记录。</div>}
+          <PublishRecords records={records} />
         </section>
 
         <section className="section">
           <h2>最近事件</h2>
-          <div className="events">
-            {events.map((event) => (
-              <div className="event" key={event.id}>
-                <b>{event.event_type}</b>
-                <div className="muted">{event.created_at} · {event.module}</div>
-                <div>{event.message}</div>
-              </div>
-            ))}
-          </div>
+          <RecentEvents events={events} />
         </section>
       </div>
       <div>
@@ -183,6 +168,70 @@ export function VideoDetail({ data, configByKey, onAction, onSaved, showToast })
           <a href={`/api/videos/${encodeURIComponent(video.video_id)}/file?type=meta`} target="_blank" rel="noreferrer"><button>meta</button></a>
         </div>
       </div>
+    </div>
+  );
+}
+
+function JobTimeline({ jobs }) {
+  if (!jobs.length) return <div className="muted">暂无任务记录。</div>;
+  return (
+    <div className="job-grid">
+      {jobs.map(([name, job]) => {
+        const attempts = `${job.attempts || 0}/${job.max_attempts || 0}`;
+        const details = [
+          job.error_type ? `错误类型 ${job.error_type}` : "",
+          job.next_run_at ? `下次重试 ${job.next_run_at}` : "",
+          job.locked_at ? `锁定 ${job.lock_owner || "-"} ${job.locked_at}` : "",
+        ].filter(Boolean);
+        return (
+          <div className={`job-card ${job.status}`} key={name}>
+            <div className="job-card-head">
+              <b>{name}</b>
+              <span className={`badge ${job.status}`}>{job.status}</span>
+            </div>
+            <div className="job-meta">
+              <span>尝试 {attempts}</span>
+              {details.map((item) => <span key={item}>{item}</span>)}
+            </div>
+            {job.error ? <div className="job-error">{job.error}</div> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PublishRecords({ records }) {
+  if (!records.length) return <div className="muted">暂无发布记录。</div>;
+  return (
+    <div className="record-list">
+      {records.map((record) => (
+        <div className="record-row" key={record.id}>
+          <div>
+            <b>{record.platform}</b>
+            <div className="muted">{record.account} · {record.published_at || record.created_at}</div>
+          </div>
+          <span className={`badge ${record.status}`}>{record.status}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RecentEvents({ events }) {
+  if (!events.length) return <div className="muted">暂无事件。</div>;
+  return (
+    <div className="events">
+      {events.map((event) => (
+        <div className="event" key={event.id}>
+          <div className="event-head">
+            <b>{event.event_type}</b>
+            <span>{event.module}</span>
+          </div>
+          <div className="muted">{event.created_at}</div>
+          <div>{event.message}</div>
+        </div>
+      ))}
     </div>
   );
 }

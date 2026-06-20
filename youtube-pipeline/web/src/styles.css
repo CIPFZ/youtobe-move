@@ -570,6 +570,60 @@ textarea {
   margin-top: 12px;
 }
 
+.job-grid,
+.record-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.job-card,
+.record-row {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.job-card.failed {
+  border-color: #f3b7b2;
+}
+
+.job-card.running,
+.job-card.pending {
+  border-color: #f0d28a;
+}
+
+.job-card-head,
+.record-row,
+.event-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.job-meta {
+  display: flex;
+  gap: 6px 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.job-error {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: #fff4f3;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .discovery-layout {
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.1fr);
@@ -700,6 +754,11 @@ textarea {
 .event {
   padding: 8px 10px;
   border-bottom: 1px solid var(--line);
+}
+
+.event-head span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .event:last-child {
