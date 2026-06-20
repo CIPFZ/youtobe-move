@@ -247,6 +247,7 @@ export function usePipelineDashboard(showToast) {
       showToast("请先选择视频。");
       return;
     }
+    if (action === "reject" && !window.confirm(`确认拒绝 ${selectedVideoIds.length} 个草稿？`)) return;
     if (action === "skip" && !window.confirm(`确认跳过 ${selectedVideoIds.length} 个视频？`)) return;
     try {
       const result = await api("/api/videos/batch", {

@@ -1,4 +1,4 @@
-import { Check, RotateCcw, Send, SkipForward } from "lucide-react";
+import { Check, RotateCcw, Send, SkipForward, X } from "lucide-react";
 import { draftOptions, errorOptions, statusOptions } from "../constants";
 import { IconButton } from "../components/IconButton";
 import { VideoList } from "../components/VideoList";
@@ -91,6 +91,7 @@ export function QueueSection({ state, actions }) {
           <button onClick={() => setSelectedVideoIds(videos.map((item) => item.video.video_id))}>全选</button>
           <button onClick={() => setSelectedVideoIds([])}>清空</button>
           <IconButton icon={Check} disabled={!selectedVideoIds.length} onClick={() => runBatchAction("approve")}>批量通过</IconButton>
+          <IconButton icon={X} disabled={!selectedVideoIds.length} onClick={() => runBatchAction("reject")}>批量拒绝</IconButton>
           <IconButton icon={RotateCcw} disabled={!selectedVideoIds.length} onClick={() => runBatchAction("retry")}>批量重试</IconButton>
           <IconButton icon={SkipForward} className="danger" disabled={!selectedVideoIds.length} onClick={() => runBatchAction("skip")}>批量跳过</IconButton>
         </div>
