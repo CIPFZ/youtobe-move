@@ -85,6 +85,50 @@ class Repository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_failures(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        job_type: str | None = None,
+        error_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        filters = ["videos.status='failed'"]
+        params: list[Any] = []
+        if job_type:
+            filters.append("latest_job.job_type=?")
+            params.append(job_type)
+        if error_type:
+            filters.append("latest_job.error_type=?")
+            params.append(error_type)
+        params.extend([limit, offset])
+        rows = self.conn.execute(
+            f"""
+            SELECT
+                videos.*,
+                latest_job.id AS job_id,
+                latest_job.job_type AS job_type,
+                latest_job.status AS job_status,
+                latest_job.attempts AS job_attempts,
+                latest_job.max_attempts AS job_max_attempts,
+                latest_job.error_type AS job_error_type,
+                latest_job.error AS job_error,
+                latest_job.next_run_at AS job_next_run_at,
+                latest_job.updated_at AS job_updated_at
+            FROM videos
+            LEFT JOIN jobs latest_job ON latest_job.id = (
+                SELECT jobs.id FROM jobs
+                WHERE jobs.video_id = videos.video_id
+                ORDER BY jobs.id DESC
+                LIMIT 1
+            )
+            WHERE {" AND ".join(filters)}
+            ORDER BY videos.updated_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def count_videos_by_status(self) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """

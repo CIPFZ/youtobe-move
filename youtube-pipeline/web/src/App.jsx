@@ -6,6 +6,7 @@ import { ConfigSection } from "./sections/ConfigSection";
 import { DetailSection } from "./sections/DetailSection";
 import { DiscoverySection } from "./sections/DiscoverySection";
 import { EventsSection } from "./sections/EventsSection";
+import { FailuresSection } from "./sections/FailuresSection";
 import { OverviewSection } from "./sections/OverviewSection";
 import { QueueSection } from "./sections/QueueSection";
 import { StorageSection } from "./sections/StorageSection";
@@ -48,6 +49,7 @@ function App() {
       <nav className="page-nav" aria-label="管理区导航">
         <a href="#overview">总览</a>
         <a href="#queue">队列</a>
+        <a href="#failures">失败</a>
         <a href="#worker">Worker</a>
         <a href="#detail">详情</a>
         <a href="#config">配置</a>
@@ -59,6 +61,7 @@ function App() {
       <main>
         <OverviewSection state={state} actions={actions} />
         <QueueSection state={state} actions={actions} />
+        <FailuresSection state={state} actions={actions} />
         <WorkerSection state={state} actions={actions} />
         <DetailSection state={state} actions={actions} showToast={showToast} />
         <ConfigSection state={state} actions={actions} />

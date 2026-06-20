@@ -13,6 +13,8 @@ export function usePipelineDashboard(showToast) {
   const [sourcePreview, setSourcePreview] = useState(null);
   const [events, setEvents] = useState(null);
   const [eventFilters, setEventFilters] = useState({ module: "", limit: 30, offset: 0 });
+  const [failures, setFailures] = useState(null);
+  const [failureFilters, setFailureFilters] = useState({ jobType: "", errorType: "", limit: 30, offset: 0 });
   const [filters, setFilters] = useState({ status: "", draftStatus: "", errorType: "" });
   const [selectedVideoIds, setSelectedVideoIds] = useState([]);
   const [addUrls, setAddUrls] = useState("");
@@ -41,6 +43,16 @@ export function usePipelineDashboard(showToast) {
     });
     if (nextFilters.module) params.set("module", nextFilters.module);
     setEvents(await api(`/api/events?${params.toString()}`));
+  }
+
+  async function loadFailures(nextFilters = failureFilters) {
+    const params = new URLSearchParams({
+      limit: String(nextFilters.limit || 30),
+      offset: String(nextFilters.offset || 0),
+    });
+    if (nextFilters.jobType) params.set("job_type", nextFilters.jobType);
+    if (nextFilters.errorType) params.set("error_type", nextFilters.errorType);
+    setFailures(await api(`/api/failures?${params.toString()}`));
   }
 
   async function selectVideo(videoId) {
@@ -75,7 +87,7 @@ export function usePipelineDashboard(showToast) {
   async function refreshAll() {
     setLoading(true);
     try {
-      await Promise.all([loadAll(), loadConfig(), loadStorage(), loadDiscoverySources(), loadEvents()]);
+      await Promise.all([loadAll(), loadConfig(), loadStorage(), loadDiscoverySources(), loadEvents(), loadFailures()]);
     } catch (error) {
       showToast(error.message);
     } finally {
@@ -107,6 +119,14 @@ export function usePipelineDashboard(showToast) {
     setEventFilters((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
       loadEvents(next).catch((error) => showToast(error.message));
+      return next;
+    });
+  }
+
+  function updateFailureFilters(updater) {
+    setFailureFilters((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      loadFailures(next).catch((error) => showToast(error.message));
       return next;
     });
   }
@@ -295,6 +315,8 @@ export function usePipelineDashboard(showToast) {
       sourcePreview,
       events,
       eventFilters,
+      failures,
+      failureFilters,
       filters,
       selectedVideoIds,
       addUrls,
@@ -309,12 +331,14 @@ export function usePipelineDashboard(showToast) {
       setSelectedVideoIds,
       updateFilters,
       updateEventFilters,
+      updateFailureFilters,
       applyQueuePreset,
       loadAll,
       loadConfig,
       loadStorage,
       loadDiscoverySources,
       loadEvents,
+      loadFailures,
       refreshAll,
       selectVideo,
       runVideoAction,

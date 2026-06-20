@@ -1323,6 +1323,70 @@ textarea {
   white-space: nowrap;
 }
 
+.failure-table {
+  display: grid;
+}
+
+.failure-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(180px, 0.7fr) minmax(260px, 1.2fr) minmax(180px, 0.7fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.failure-row.active,
+.failure-row:hover {
+  background: #fffaf0;
+}
+
+.failure-row:last-child {
+  border-bottom: 0;
+}
+
+.failure-row button:first-child {
+  display: grid;
+  height: auto;
+  justify-items: start;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.failure-row > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.failure-row b,
+.failure-row span,
+.failure-row p,
+.failure-row small {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.failure-row span,
+.failure-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.failure-row p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .toast {
   position: fixed;
   right: 18px;
@@ -1387,5 +1451,10 @@ textarea {
   .event-row {
     grid-template-columns: 1fr;
     gap: 5px;
+  }
+
+  .failure-row {
+    grid-template-columns: 1fr;
+    gap: 7px;
   }
 }

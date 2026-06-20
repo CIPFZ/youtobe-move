@@ -8,7 +8,7 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.publish_service import update_publish_draft
-from app.web import WebError, _handle_action, _handle_batch_action, _list_events, _list_videos, _status_settings
+from app.web import WebError, _handle_action, _handle_batch_action, _list_events, _list_failures, _list_videos, _status_settings
 
 
 class WebTests(unittest.TestCase):
@@ -87,6 +87,30 @@ class WebTests(unittest.TestCase):
         self.assertTrue(first_page["has_more"])
         self.assertEqual(second_page["events"][0]["event_type"], "worker_run_started")
         self.assertEqual(second_page["module"], "worker")
+
+    def test_list_failures_filters_by_job_and_error_type(self):
+        self.repo.upsert_video("abc123def45", "https://www.youtube.com/watch?v=abc123def45", status="selected")
+        self.repo.update_video_status("abc123def45", "downloading")
+        self.repo.update_video_status("abc123def45", "failed", error="network failed")
+        download_job_id = self.repo.create_job("download", video_id="abc123def45")
+        self.repo.update_job_status(download_job_id, "failed", error="network failed", error_type="network_error")
+        self.repo.upsert_video("def123abc45", "https://www.youtube.com/watch?v=def123abc45", status="selected")
+        self.repo.update_video_status("def123abc45", "downloading")
+        self.repo.update_video_status("def123abc45", "downloaded")
+        self.repo.update_video_status("def123abc45", "ready_to_publish")
+        self.repo.update_video_status("def123abc45", "publishing")
+        self.repo.update_video_status("def123abc45", "failed", error="publish failed")
+        publish_job_id = self.repo.create_job("publish", video_id="def123abc45")
+        self.repo.update_job_status(publish_job_id, "failed", error="publish failed", error_type="publish_failed")
+        self.conn.commit()
+
+        matched = _list_failures(self.config, {"job_type": ["publish"], "error_type": ["publish_failed"], "limit": ["10"]})
+        missed = _list_failures(self.config, {"job_type": ["download"], "error_type": ["publish_failed"], "limit": ["10"]})
+
+        self.assertEqual(len(matched["failures"]), 1)
+        self.assertEqual(matched["failures"][0]["video_id"], "def123abc45")
+        self.assertEqual(matched["failures"][0]["job_type"], "publish")
+        self.assertEqual(missed["failures"], [])
 
     def test_real_publish_requires_confirm(self):
         with self.assertRaises(WebError) as ctx:

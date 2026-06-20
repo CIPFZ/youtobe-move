@@ -1126,10 +1126,19 @@ P9.6 Web 页面重构已完成基础版：
   - 事件列表展示 event_type、module、created_at、message、video_id、job_id。
 - `Repository.list_events()` 已支持 module/offset 参数。
 - `events` 表已补充 `module,id` 查询索引。
+- 新增失败管理区：
+  - 新增 `GET /api/failures`。
+  - 支持按 `job_type` 筛选。
+  - 支持按 `error_type` 筛选。
+  - 支持 `limit` 和 `offset` 分页。
+  - 页面展示失败视频、最新失败 job、错误类型、尝试次数、错误信息、下次重试时间。
+  - 可从失败记录直接选择视频进入详情。
+  - 可从失败记录直接触发重试。
+- `Repository.list_failures()` 已支持失败记录专用查询，避免 Web 继续用视频列表做临时过滤。
 
 P9.6 未完成：
 
-- 失败记录的独立分页视图和更丰富筛选。
+- 暂无。后续可继续做 Web 交互细节优化和生产运行观测增强。
 
 ### 风险点
 
