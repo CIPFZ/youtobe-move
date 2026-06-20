@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 from typing import Any, Callable
 
-from app.config import Config
+from app.config import Config, load_config
 from app.cron_schedule import seconds_until_next_cron
 from app.core.db import connect
 from app.core.repository import Repository
@@ -171,15 +171,21 @@ def run_worker_loop(
     enable_publish: bool | None = None,
     publish_dry_run: bool | None = None,
     max_runs: int | None = None,
+    config_loader: Callable[[], Config] | None = load_config,
 ) -> dict[str, Any]:
-    interval = config.worker_interval_seconds if interval_seconds is None else interval_seconds
-    cron_expression = str(getattr(config, "worker_cron", "") or "").strip() if interval_seconds is None else ""
     runs: list[dict[str, Any]] = []
     run_count = 0
+    current_config = config
+    schedule_mode = "interval"
     while max_runs is None or run_count < max_runs:
+        if config_loader is not None:
+            try:
+                current_config = config_loader()
+            except Exception:
+                logger.exception("Worker config reload failed; using previous config")
         runs.append(
             run_worker_once(
-                config,
+                current_config,
                 enable_publish=enable_publish,
                 publish_dry_run=publish_dry_run,
             )
@@ -187,11 +193,19 @@ def run_worker_loop(
         run_count += 1
         if max_runs is not None and run_count >= max_runs:
             break
+        if config_loader is not None:
+            try:
+                current_config = config_loader()
+            except Exception:
+                logger.exception("Worker config reload before sleep failed; using previous config")
+        interval = current_config.worker_interval_seconds if interval_seconds is None else interval_seconds
+        cron_expression = str(getattr(current_config, "worker_cron", "") or "").strip() if interval_seconds is None else ""
+        schedule_mode = "cron" if cron_expression else "interval"
         sleep_seconds = seconds_until_next_cron(cron_expression, datetime.now()) if cron_expression else interval
         logger.info(
             "Worker loop sleeping: mode=%s seconds=%.1f",
-            "cron" if cron_expression else "interval",
+            schedule_mode,
             sleep_seconds,
         )
         time.sleep(sleep_seconds)
-    return {"status": "stopped", "runs": runs, "schedule_mode": "cron" if cron_expression else "interval"}
+    return {"status": "stopped", "runs": runs, "schedule_mode": schedule_mode}

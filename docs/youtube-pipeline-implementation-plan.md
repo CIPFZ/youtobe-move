@@ -867,6 +867,10 @@ P9.1 配置与开关已完成：
   - 支持 5 段 cron 表达式。
   - `WORKER_CRON` 为空时继续使用 `WORKER_INTERVAL_SECONDS`。
   - 命令行 `--interval` 会覆盖 `WORKER_CRON`。
+- worker loop 已支持运行中配置热重载：
+  - 每轮运行前重新加载 `.env`。
+  - 每次 sleep 前重新加载 `.env`，让 `WORKER_CRON` / `WORKER_INTERVAL_SECONDS` 在下一次调度前生效。
+  - 命令行显式传入的 `--interval`、`--enable-publish`、`--publish-dry-run` 继续优先于 `.env`。
 - Web 当前页面新增最小配置面板，可编辑常用配置：
   - pipeline 开关
   - worker interval/cron
@@ -878,11 +882,11 @@ P9.1 配置与开关已完成：
   - 合法更新写回 `.env` 并写 audit event。
   - 非法字段、非法值、masked sensitive value 拒绝保存。
   - worker 遵守 pipeline/download/describe 开关。
+  - worker loop 每轮重载配置。
 
 P9.1 未完成：
 
 - 配置页最终交互设计；当前是最小可用面板。
-- 运行中 worker 的热重载机制；当前 Web server 会重载自身 config，worker 进程下一轮是否读取取决于启动方式。
 
 P9.2 队列管理已完成基础版：
 

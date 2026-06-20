@@ -159,7 +159,7 @@ class WorkerRunnerTests(unittest.TestCase):
             patch("app.worker.runner.seconds_until_next_cron", return_value=0.01) as seconds_until_next_cron,
             patch("app.worker.runner.time.sleep") as sleep,
         ):
-            result = run_worker_loop(self.config, max_runs=2)
+            result = run_worker_loop(self.config, max_runs=2, config_loader=None)
 
         self.assertEqual(result["schedule_mode"], "cron")
         seconds_until_next_cron.assert_called_once()
@@ -172,11 +172,40 @@ class WorkerRunnerTests(unittest.TestCase):
             patch("app.worker.runner.seconds_until_next_cron") as seconds_until_next_cron,
             patch("app.worker.runner.time.sleep") as sleep,
         ):
-            result = run_worker_loop(self.config, interval_seconds=7, max_runs=2)
+            result = run_worker_loop(self.config, interval_seconds=7, max_runs=2, config_loader=None)
 
         self.assertEqual(result["schedule_mode"], "interval")
         seconds_until_next_cron.assert_not_called()
         sleep.assert_called_once_with(7)
+
+    def test_run_worker_loop_reloads_config_each_run_and_before_sleep(self):
+        first = SimpleNamespace(**self.config.__dict__)
+        first.worker_cron = ""
+        first.worker_interval_seconds = 3
+        second = SimpleNamespace(**self.config.__dict__)
+        second.worker_cron = "*/5 * * * *"
+        second.worker_interval_seconds = 9
+        loader_values = [first, second, second]
+        seen_intervals = []
+
+        def load_next():
+            return loader_values.pop(0)
+
+        def fake_run_worker_once(config, **kwargs):
+            seen_intervals.append(config.worker_interval_seconds)
+            return {"status": "ok"}
+
+        with (
+            patch("app.worker.runner.run_worker_once", side_effect=fake_run_worker_once),
+            patch("app.worker.runner.seconds_until_next_cron", return_value=0.01) as seconds_until_next_cron,
+            patch("app.worker.runner.time.sleep") as sleep,
+        ):
+            result = run_worker_loop(self.config, max_runs=2, config_loader=load_next)
+
+        self.assertEqual(seen_intervals, [3, 9])
+        self.assertEqual(result["schedule_mode"], "cron")
+        seconds_until_next_cron.assert_called_once()
+        sleep.assert_called_once_with(0.01)
 
 
 if __name__ == "__main__":

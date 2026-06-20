@@ -86,7 +86,7 @@ worker 默认会按低水位补充 discovery，并推进 download/describe。真
 youtube-pipeline worker
 ```
 
-默认按 `WORKER_INTERVAL_SECONDS` 间隔运行；如果 `.env` 中配置了 5 段 `WORKER_CRON`，则按 cron 的下一次匹配时间运行。命令行 `--interval` 会覆盖 cron 配置。
+默认按 `WORKER_INTERVAL_SECONDS` 间隔运行；如果 `.env` 中配置了 5 段 `WORKER_CRON`，则按 cron 的下一次匹配时间运行。命令行 `--interval` 会覆盖 cron 配置。长期运行的 worker 会在每轮运行前和睡眠前重新加载 `.env`，Web 配置页保存后的开关、cron、发布策略会在下一轮生效。
 
 自动发布模式由 `.env` 中的 `PUBLISH_MODE` 控制：
 
