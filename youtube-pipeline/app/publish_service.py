@@ -25,6 +25,16 @@ PUBLISH_TAG_MAX_COUNT = 8
 PUBLISH_TAG_MAX_LENGTH = 20
 
 
+def publish_draft_rules() -> dict[str, Any]:
+    return {
+        "title_max_length": PUBLISH_TITLE_MAX_LENGTH,
+        "description_max_length": PUBLISH_DESCRIPTION_MAX_LENGTH,
+        "tag_max_count": PUBLISH_TAG_MAX_COUNT,
+        "tag_max_length": PUBLISH_TAG_MAX_LENGTH,
+        "required_fields": ["title", "description", "tid"],
+    }
+
+
 def _ensure_publish_mode(config: Config) -> str:
     mode = str(config.publish_mode or "manual")
     if mode not in PUBLISH_MODES:

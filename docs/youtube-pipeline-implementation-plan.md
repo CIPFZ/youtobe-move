@@ -962,6 +962,16 @@ P9.3 草稿编辑和发布策略已完成基础版：
   - draft status
 - 分区下拉从 `BILIBILI_TID_OPTIONS` 读取，不在前端硬编码。
 - 保存草稿后刷新当前视频详情，真实发布仍走原有 publish 校验。
+- 发布草稿字段规则已统一由后端输出：
+  - `publish_draft_rules.title_max_length`
+  - `publish_draft_rules.description_max_length`
+  - `publish_draft_rules.tag_max_count`
+  - `publish_draft_rules.tag_max_length`
+- React 详情页使用后端规则展示：
+  - 标题字符计数
+  - 描述字符计数
+  - 标签数量计数
+  - 单标签最长字符提示
 - 新增 `publish_draft_versions` 草稿历史表。
 - 草稿历史记录覆盖：
   - LLM 首次生成草稿。
@@ -976,13 +986,14 @@ P9.3 草稿编辑和发布策略已完成基础版：
   - 非白名单 tid 拒绝保存。
   - 生成、编辑、审核动作写入草稿历史。
   - 视频详情返回草稿历史。
+  - status settings 返回发布草稿字段规则。
 - 修正每日发布限制统计：
   - `publish_records.created_at` 和真实发布 `published_at` 按 UTC 存储。
   - 本地日开始时间会转换为 UTC 后再查询，避免本地 00:00 后漏计当天发布记录。
 
 P9.3 未完成：
 
-- 更细的字段级校验，如标题长度、B 站标签数量上限提示。
+- 暂无。后续可根据平台实际返回继续补充更细规则。
 
 P9.4 存储监控和清理已完成基础版：
 

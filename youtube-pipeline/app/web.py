@@ -25,7 +25,7 @@ from app.discovery.source_config import (
 )
 from app.download_service import download_next, download_video_from_db
 from app.operations import add_video_url, add_video_urls, pipeline_status, retry_video, skip_video
-from app.publish_service import describe_video, publish_next, publish_video, review_publish_draft, update_publish_draft
+from app.publish_service import describe_video, publish_draft_rules, publish_next, publish_video, review_publish_draft, update_publish_draft
 from app.storage import cleanup_media, cleanup_video_media, get_storage_status
 from app.worker import run_worker_once
 from app.youtube_api import parse_video_id
@@ -164,6 +164,7 @@ def _status_settings(config: Config) -> dict[str, Any]:
         "publish_daily_limit": config.publish_daily_limit,
         "publish_window_start": config.publish_window_start,
         "publish_window_end": config.publish_window_end,
+        "publish_draft_rules": publish_draft_rules(),
     }
 
 

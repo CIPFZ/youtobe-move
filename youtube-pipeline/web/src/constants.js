@@ -2,13 +2,6 @@ export const statusOptions = ["selected", "downloaded", "ready_to_publish", "pub
 export const draftOptions = ["pending", "approved", "rejected"];
 export const errorOptions = ["youtube_403", "network_error", "llm_failed", "publish_failed", "unknown"];
 
-export const draftLimits = {
-  title: 80,
-  description: 2000,
-  tags: 8,
-  tagLength: 20,
-};
-
 export const configFields = [
   "PIPELINE_ENABLED",
   "WORKER_INTERVAL_SECONDS",

@@ -1,7 +1,7 @@
 import { VideoDetail } from "../components/VideoDetail";
 
 export function DetailSection({ state, actions, showToast }) {
-  const { selectedId, detail, configByKey } = state;
+  const { selectedId, detail, configByKey, status } = state;
   const { loadAll, runVideoAction } = actions;
 
   return (
@@ -15,6 +15,7 @@ export function DetailSection({ state, actions, showToast }) {
           <VideoDetail
             data={detail}
             configByKey={configByKey}
+            draftRules={status?.settings?.publish_draft_rules}
             onAction={runVideoAction}
             onSaved={async () => {
               await loadAll(detail.video.video_id);

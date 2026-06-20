@@ -1,13 +1,21 @@
 import { useEffect, useState } from "react";
 import { Check, Download, Eye, FileText, HardDrive, RotateCcw, Save, Send, SkipForward, X } from "lucide-react";
 import { api } from "../api";
-import { draftLimits, draftOptions } from "../constants";
+import { draftOptions } from "../constants";
 import { fmtCount, fmtDuration, parseTagText, parseTags, parseTidOptions, tagsToText } from "../format";
 import { IconButton } from "./IconButton";
 
-export function VideoDetail({ data, configByKey, onAction, onSaved, showToast }) {
+const fallbackDraftRules = {
+  title_max_length: 80,
+  description_max_length: 2000,
+  tag_max_count: 8,
+  tag_max_length: 20,
+};
+
+export function VideoDetail({ data, configByKey, draftRules, onAction, onSaved, showToast }) {
   const video = data.video;
   const draft = data.publish_draft || {};
+  const rules = { ...fallbackDraftRules, ...(draftRules || {}) };
   const draftVersions = data.publish_draft_versions || [];
   const records = data.publish_records || [];
   const events = data.events || [];
@@ -27,7 +35,8 @@ export function VideoDetail({ data, configByKey, onAction, onSaved, showToast })
   const jobLeaseSeconds = Number(configByKey?.JOB_LEASE_SECONDS?.value || 0);
   const [draftForm, setDraftForm] = useState(() => makeDraftForm(draft));
   const [savingDraft, setSavingDraft] = useState(false);
-  const draftErrors = validateDraftForm(draftForm);
+  const draftErrors = validateDraftForm(draftForm, rules);
+  const parsedDraftTags = parseTagText(draftForm.tags);
 
   useEffect(() => {
     setDraftForm(makeDraftForm(draft));
@@ -100,17 +109,17 @@ export function VideoDetail({ data, configByKey, onAction, onSaved, showToast })
               <DraftSummary draft={draft} />
               <div className="draft-form">
                 <label>
-                  <span>标题 <em>{draftForm.title.length}/{draftLimits.title}</em></span>
-                  <input value={draftForm.title} onChange={(event) => updateDraftField("title", event.target.value)} maxLength={80} />
+                  <span>标题 <em>{draftForm.title.length}/{rules.title_max_length}</em></span>
+                  <input value={draftForm.title} onChange={(event) => updateDraftField("title", event.target.value)} maxLength={rules.title_max_length} />
                 </label>
                 <label>
-                  <span>描述 <em>{draftForm.description.length}/{draftLimits.description}</em></span>
+                  <span>描述 <em>{draftForm.description.length}/{rules.description_max_length}</em></span>
                   <textarea value={draftForm.description} onChange={(event) => updateDraftField("description", event.target.value)} rows={7} />
                 </label>
                 <label>
-                  <span>标签</span>
+                  <span>标签 <em>{parsedDraftTags.length}/{rules.tag_max_count}</em></span>
                   <input value={draftForm.tags} onChange={(event) => updateDraftField("tags", event.target.value)} placeholder="使用逗号分隔" />
-                  <small>最多 {draftLimits.tags} 个，每个不超过 {draftLimits.tagLength} 个字符。</small>
+                  <small>最多 {rules.tag_max_count} 个，每个不超过 {rules.tag_max_length} 个字符。当前最长 {longestTagLength(parsedDraftTags)} 个字符。</small>
                 </label>
                 <div className="draft-row">
                   <label>
@@ -383,19 +392,23 @@ function makeDraftForm(draft) {
   };
 }
 
-function validateDraftForm(form) {
+function validateDraftForm(form, rules) {
   const errors = [];
   const title = String(form.title || "").trim();
   const description = String(form.description || "").trim();
   const tags = parseTagText(form.tags);
   if (!title) errors.push("标题不能为空");
-  if (title.length > draftLimits.title) errors.push(`标题不能超过 ${draftLimits.title} 个字符`);
+  if (title.length > rules.title_max_length) errors.push(`标题不能超过 ${rules.title_max_length} 个字符`);
   if (!description) errors.push("描述不能为空");
-  if (description.length > draftLimits.description) errors.push(`描述不能超过 ${draftLimits.description} 个字符`);
-  if (tags.length > draftLimits.tags) errors.push(`标签不能超过 ${draftLimits.tags} 个`);
-  if (tags.some((tag) => tag.length > draftLimits.tagLength)) errors.push(`单个标签不能超过 ${draftLimits.tagLength} 个字符`);
+  if (description.length > rules.description_max_length) errors.push(`描述不能超过 ${rules.description_max_length} 个字符`);
+  if (tags.length > rules.tag_max_count) errors.push(`标签不能超过 ${rules.tag_max_count} 个`);
+  if (tags.some((tag) => tag.length > rules.tag_max_length)) errors.push(`单个标签不能超过 ${rules.tag_max_length} 个字符`);
   if (!form.tid) errors.push("请选择发布分区");
   return errors;
+}
+
+function longestTagLength(tags) {
+  return tags.reduce((max, tag) => Math.max(max, tag.length), 0);
 }
 
 function sourceTone(source) {

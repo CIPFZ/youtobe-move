@@ -232,6 +232,8 @@ class WebTests(unittest.TestCase):
         self.assertFalse(settings["worker_enable_publish"])
         self.assertEqual(settings["worker_interval_seconds"], 60)
         self.assertEqual(settings["worker_discovery_min_queue_size"], 3)
+        self.assertEqual(settings["publish_draft_rules"]["title_max_length"], 80)
+        self.assertEqual(settings["publish_draft_rules"]["tag_max_count"], 8)
 
     def test_update_publish_draft_marks_manual_and_resets_review(self):
         self.repo.upsert_video(
