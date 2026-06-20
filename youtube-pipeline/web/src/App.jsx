@@ -1,81 +1,69 @@
 import React, { useEffect, useState } from "react";
-import { Play, RefreshCw, Search } from "lucide-react";
-import { IconButton } from "./components/IconButton";
+import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { message } from "antd";
+import { AppLayout } from "./layout/AppLayout";
 import { usePipelineDashboard } from "./hooks/usePipelineDashboard";
-import { ConfigSection } from "./sections/ConfigSection";
-import { DetailSection } from "./sections/DetailSection";
-import { DiscoverySection } from "./sections/DiscoverySection";
-import { EventsSection } from "./sections/EventsSection";
-import { FailuresSection } from "./sections/FailuresSection";
-import { JobsSection } from "./sections/JobsSection";
-import { OverviewSection } from "./sections/OverviewSection";
-import { QueueSection } from "./sections/QueueSection";
-import { StorageSection } from "./sections/StorageSection";
-import { WorkerSection } from "./sections/WorkerSection";
+import { DashboardPage } from "./pages/DashboardPage";
+import { DiscoveryPage } from "./pages/DiscoveryPage";
+import { OperationsPage } from "./pages/OperationsPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { VideosPage } from "./pages/VideosPage";
 
 function App() {
-  const [toast, setToast] = useState("");
+  const [messageApi, contextHolder] = message.useMessage();
 
-  function showToast(message) {
-    setToast(typeof message === "string" ? message : JSON.stringify(message, null, 2));
-    window.clearTimeout(showToast.timer);
-    showToast.timer = window.setTimeout(() => setToast(""), 5200);
+  function showToast(payload) {
+    const content = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+    messageApi.open({
+      type: "info",
+      content: <pre className="toast-pre">{content}</pre>,
+      duration: 5.2,
+    });
   }
 
   const { state, actions } = usePipelineDashboard(showToast);
-  const {
-    refreshAll,
-    runWorker,
-    discoverDryRun,
-  } = actions;
+  const navigate = useNavigate();
+  const routeActions = {
+    ...actions,
+    selectVideo: async (videoId) => {
+      await actions.selectVideo(videoId);
+      navigate(`/videos/${encodeURIComponent(videoId)}`);
+    },
+  };
 
   useEffect(() => {
-    refreshAll();
+    actions.refreshAll();
   }, []);
 
   return (
     <>
-      <header>
-        <div>
-          <h1>YouTube Pipeline</h1>
-          <div className="muted">发现、下载、文案、发布队列</div>
-        </div>
-        <div className="toolbar">
-          <IconButton icon={Play} onClick={runWorker}>运行一轮</IconButton>
-          <IconButton icon={Search} onClick={discoverDryRun}>发现预览</IconButton>
-          <IconButton icon={RefreshCw} className="primary" onClick={refreshAll} disabled={state.loading}>刷新</IconButton>
-        </div>
-      </header>
-
-      <nav className="page-nav" aria-label="管理区导航">
-        <a href="#overview">总览</a>
-        <a href="#queue">队列</a>
-        <a href="#failures">失败</a>
-        <a href="#worker">Worker</a>
-        <a href="#jobs">Jobs</a>
-        <a href="#detail">详情</a>
-        <a href="#config">配置</a>
-        <a href="#storage">存储</a>
-        <a href="#discovery">发现源</a>
-        <a href="#events">事件</a>
-      </nav>
-
-      <main>
-        <OverviewSection state={state} actions={actions} />
-        <QueueSection state={state} actions={actions} />
-        <FailuresSection state={state} actions={actions} />
-        <WorkerSection state={state} actions={actions} />
-        <JobsSection state={state} actions={actions} />
-        <DetailSection state={state} actions={actions} showToast={showToast} />
-        <ConfigSection state={state} actions={actions} />
-        <StorageSection state={state} actions={actions} />
-        <DiscoverySection state={state} actions={actions} />
-        <EventsSection state={state} actions={actions} />
-      </main>
-
-      {toast ? <div className="toast show">{toast}</div> : null}
+      {contextHolder}
+      <Routes>
+        <Route element={<AppLayout state={state} actions={routeActions} />}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<DashboardPage state={state} actions={routeActions} />} />
+          <Route path="/videos" element={<VideosPage state={state} actions={routeActions} showToast={showToast} />} />
+          <Route path="/videos/:videoId" element={<VideoDetailRoute state={state} actions={routeActions} rawActions={actions} showToast={showToast} />} />
+          <Route path="/discovery" element={<DiscoveryPage state={state} actions={routeActions} />} />
+          <Route path="/operations" element={<OperationsPage state={state} actions={routeActions} />} />
+          <Route path="/settings" element={<SettingsPage state={state} actions={routeActions} />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Route>
+      </Routes>
     </>
   );
+}
+
+function VideoDetailRoute({ state, actions, rawActions, showToast }) {
+  const { videoId } = useParams();
+
+  useEffect(() => {
+    if (videoId && state.selectedId !== videoId) {
+      rawActions.selectVideo(videoId).catch((error) => showToast(error.message));
+    }
+  }, [videoId]);
+
+  return <VideosPage state={state} actions={actions} showToast={showToast} />;
 }
 
 export default App;
