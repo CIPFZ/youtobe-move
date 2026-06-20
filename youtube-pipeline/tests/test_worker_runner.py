@@ -7,7 +7,7 @@ from unittest.mock import patch
 from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
-from app.worker.runner import run_worker_once
+from app.worker.runner import run_worker_loop, run_worker_once
 
 
 class WorkerRunnerTests(unittest.TestCase):
@@ -25,6 +25,7 @@ class WorkerRunnerTests(unittest.TestCase):
             worker_enable_publish=False,
             worker_publish_dry_run=True,
             worker_interval_seconds=1,
+            worker_cron="",
             job_lease_seconds=1800,
             storage_cleanup_enabled=False,
         )
@@ -150,6 +151,32 @@ class WorkerRunnerTests(unittest.TestCase):
         self.assertEqual(result["steps"][-1]["step"], "storage_cleanup")
         self.assertEqual(result["steps"][-1]["result"]["status"], "cleaned")
         cleanup_media.assert_called_once_with(self.config, dry_run=False)
+
+    def test_run_worker_loop_uses_cron_when_configured(self):
+        self.config.worker_cron = "*/5 * * * *"
+        with (
+            patch("app.worker.runner.run_worker_once", return_value={"status": "ok"}),
+            patch("app.worker.runner.seconds_until_next_cron", return_value=0.01) as seconds_until_next_cron,
+            patch("app.worker.runner.time.sleep") as sleep,
+        ):
+            result = run_worker_loop(self.config, max_runs=2)
+
+        self.assertEqual(result["schedule_mode"], "cron")
+        seconds_until_next_cron.assert_called_once()
+        sleep.assert_called_once_with(0.01)
+
+    def test_run_worker_loop_interval_overrides_cron(self):
+        self.config.worker_cron = "*/5 * * * *"
+        with (
+            patch("app.worker.runner.run_worker_once", return_value={"status": "ok"}),
+            patch("app.worker.runner.seconds_until_next_cron") as seconds_until_next_cron,
+            patch("app.worker.runner.time.sleep") as sleep,
+        ):
+            result = run_worker_loop(self.config, interval_seconds=7, max_runs=2)
+
+        self.assertEqual(result["schedule_mode"], "interval")
+        seconds_until_next_cron.assert_not_called()
+        sleep.assert_called_once_with(7)
 
 
 if __name__ == "__main__":

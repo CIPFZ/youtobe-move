@@ -863,6 +863,10 @@ P9.1 配置与开关已完成：
   - `PIPELINE_ENABLED=false` 时跳过 discovery/download/describe/publish。
   - `WORKER_ENABLE_DOWNLOAD=false` 时跳过 download。
   - `WORKER_ENABLE_DESCRIBE=false` 时跳过 describe。
+- worker loop 已支持 `WORKER_CRON`：
+  - 支持 5 段 cron 表达式。
+  - `WORKER_CRON` 为空时继续使用 `WORKER_INTERVAL_SECONDS`。
+  - 命令行 `--interval` 会覆盖 `WORKER_CRON`。
 - Web 当前页面新增最小配置面板，可编辑常用配置：
   - pipeline 开关
   - worker interval/cron
@@ -877,7 +881,6 @@ P9.1 配置与开关已完成：
 
 P9.1 未完成：
 
-- 真正的 cron 调度执行器；当前只保存 `WORKER_CRON` 配置。
 - 配置页最终交互设计；当前是最小可用面板。
 - 运行中 worker 的热重载机制；当前 Web server 会重载自身 config，worker 进程下一轮是否读取取决于启动方式。
 

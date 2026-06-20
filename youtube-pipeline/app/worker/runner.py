@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 import socket
 import time
+from datetime import datetime
 from typing import Any, Callable
 
 from app.config import Config
+from app.cron_schedule import seconds_until_next_cron
 from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
@@ -171,6 +173,7 @@ def run_worker_loop(
     max_runs: int | None = None,
 ) -> dict[str, Any]:
     interval = config.worker_interval_seconds if interval_seconds is None else interval_seconds
+    cron_expression = str(getattr(config, "worker_cron", "") or "").strip() if interval_seconds is None else ""
     runs: list[dict[str, Any]] = []
     run_count = 0
     while max_runs is None or run_count < max_runs:
@@ -184,5 +187,11 @@ def run_worker_loop(
         run_count += 1
         if max_runs is not None and run_count >= max_runs:
             break
-        time.sleep(interval)
-    return {"status": "stopped", "runs": runs}
+        sleep_seconds = seconds_until_next_cron(cron_expression, datetime.now()) if cron_expression else interval
+        logger.info(
+            "Worker loop sleeping: mode=%s seconds=%.1f",
+            "cron" if cron_expression else "interval",
+            sleep_seconds,
+        )
+        time.sleep(sleep_seconds)
+    return {"status": "stopped", "runs": runs, "schedule_mode": "cron" if cron_expression else "interval"}
