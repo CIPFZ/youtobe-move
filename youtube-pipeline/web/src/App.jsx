@@ -5,6 +5,7 @@ import { usePipelineDashboard } from "./hooks/usePipelineDashboard";
 import { ConfigSection } from "./sections/ConfigSection";
 import { DetailSection } from "./sections/DetailSection";
 import { DiscoverySection } from "./sections/DiscoverySection";
+import { OverviewSection } from "./sections/OverviewSection";
 import { QueueSection } from "./sections/QueueSection";
 import { StorageSection } from "./sections/StorageSection";
 
@@ -43,6 +44,7 @@ function App() {
       </header>
 
       <main>
+        <OverviewSection state={state} />
         <QueueSection state={state} actions={actions} />
         <DetailSection state={state} actions={actions} showToast={showToast} />
         <ConfigSection state={state} actions={actions} />

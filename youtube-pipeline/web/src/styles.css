@@ -146,6 +146,80 @@ main {
   background: var(--panel-alt);
 }
 
+.overview-panel {
+  background: #fbfcfd;
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.overview-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  min-height: 92px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.overview-card span,
+.overview-card small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-card b {
+  display: block;
+  margin: 5px 0;
+  overflow: hidden;
+  font-size: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--panel-alt);
+  color: var(--muted);
+}
+
+.overview-card.ok .overview-icon {
+  background: #e7f6ee;
+  color: var(--ok);
+}
+
+.overview-card.warn .overview-icon {
+  background: #fff5d6;
+  color: var(--warning);
+}
+
+.overview-card.danger .overview-icon {
+  background: #fee8e7;
+  color: var(--danger);
+}
+
+.overview-alerts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 16px 14px;
+}
+
 .storage-stats {
   margin: -16px -16px 0;
 }
@@ -599,6 +673,7 @@ textarea {
 
   .config-grid,
   .discovery-layout,
+  .overview-grid,
   .storage-grid,
   .stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -617,6 +692,7 @@ textarea {
   }
 
   .stats,
+  .overview-grid,
   .discovery-layout,
   .storage-grid,
   .config-grid {

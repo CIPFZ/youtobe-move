@@ -12,7 +12,6 @@ export function QueueSection({ state, actions }) {
     addUrls,
     addPriority,
     addSourceLabel,
-    stats,
   } = state;
   const {
     setAddUrls,
@@ -44,14 +43,6 @@ export function QueueSection({ state, actions }) {
             {errorOptions.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </div>
-      </div>
-      <div className="stats">
-        {stats.map(([label, value]) => (
-          <div className="stat" key={label}>
-            <span>{label}</span>
-            <b>{value}</b>
-          </div>
-        ))}
       </div>
       <div className="add-url-box">
         <textarea value={addUrls} onChange={(event) => setAddUrls(event.target.value)} placeholder="输入 YouTube 链接，支持一行一个" />

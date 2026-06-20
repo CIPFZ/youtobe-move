@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { api } from "../api";
 import { configFields } from "../constants";
-import { flattenConfig, statusMap } from "../format";
+import { flattenConfig } from "../format";
 
 export function usePipelineDashboard(showToast) {
   const [status, setStatus] = useState(null);
@@ -20,19 +20,6 @@ export function usePipelineDashboard(showToast) {
   const [loading, setLoading] = useState(false);
 
   const configByKey = useMemo(() => flattenConfig(config), [config]);
-  const stats = useMemo(() => {
-    const counts = statusMap(status?.videos_by_status);
-    const locks = status?.job_lock_status || {};
-    return [
-      ["active", status?.active_queue_count || 0],
-      ["ready", counts.ready_to_publish || 0],
-      ["published", counts.published || 0],
-      ["running", locks.running || 0],
-      ["locked", locks.locked || 0],
-      ["mode", status?.settings?.publish_mode || "-"],
-    ];
-  }, [status]);
-
   async function loadConfig() {
     setConfig(await api("/api/config"));
   }
@@ -281,7 +268,6 @@ export function usePipelineDashboard(showToast) {
       addPriority,
       addSourceLabel,
       loading,
-      stats,
     },
     actions: {
       setAddUrls,
