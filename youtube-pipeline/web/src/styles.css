@@ -364,6 +364,110 @@ main {
   margin: -16px -16px 0;
 }
 
+.worker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.worker-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.worker-card.wide {
+  grid-column: 1 / -1;
+}
+
+.worker-card h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.switch-list {
+  display: grid;
+  gap: 8px;
+}
+
+.switch-row,
+.job-status-table div,
+.worker-event div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.switch-row span:first-child,
+.job-status-table span:first-child,
+.worker-event span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.kv.compact {
+  grid-template-columns: 70px minmax(0, 1fr);
+}
+
+.worker-locks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.worker-locks div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-alt);
+}
+
+.worker-locks b {
+  font-size: 22px;
+}
+
+.worker-locks span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.job-status-table,
+.worker-events {
+  display: grid;
+  gap: 8px;
+}
+
+.job-status-table div {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.job-status-table div:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.worker-event {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfd;
+}
+
+.worker-event p {
+  margin: 5px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .stat {
   min-height: 58px;
   padding: 8px;
@@ -1141,7 +1245,8 @@ textarea {
   .overview-lanes,
   .preview-columns,
   .storage-grid,
-  .stats {
+  .stats,
+  .worker-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1163,7 +1268,8 @@ textarea {
   .discovery-layout,
   .preview-columns,
   .storage-grid,
-  .config-grid {
+  .config-grid,
+  .worker-grid {
     grid-template-columns: 1fr;
   }
 }

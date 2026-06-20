@@ -1079,6 +1079,7 @@ P9.6 Web 页面重构已完成基础版：
 - React 页面已按管理域拆分：
   - 总览
   - 队列
+  - Worker
   - 详情
   - 配置
   - 存储
@@ -1102,10 +1103,19 @@ P9.6 Web 页面重构已完成基础版：
   - `fallback` 分区来源有明确阻断提示。
   - 当前标签独立展示。
 - 页面已补充响应式布局，避免移动端摘要面板挤压。
+- 新增 Worker 管理区：
+  - 展示 pipeline 总开关。
+  - 展示 discovery/download/describe/publish 阶段开关。
+  - 展示 publish dry-run 状态。
+  - 展示 interval、cron、job lease、发现队列阈值、限定发现源。
+  - 展示 running/locked job 数。
+  - 展示 job_type/status 分布。
+  - 展示最近 worker 事件。
+  - 可从该区手动运行一轮 worker。
+- `/api/status.settings` 已补充 Worker 管理区需要的运行参数。
 
 P9.6 未完成：
 
-- Worker 独立管理页。
 - 事件/失败记录的分页和更丰富筛选。
 - 更完整的详情页媒体预览体验。
 

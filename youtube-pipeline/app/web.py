@@ -145,6 +145,27 @@ def _list_videos(config: Config, query: dict[str, list[str]]) -> dict[str, Any]:
     }
 
 
+def _status_settings(config: Config) -> dict[str, Any]:
+    return {
+        "pipeline_enabled": config.pipeline_enabled,
+        "publish_mode": config.publish_mode,
+        "worker_interval_seconds": config.worker_interval_seconds,
+        "worker_cron": config.worker_cron,
+        "worker_enable_discovery": config.worker_enable_discovery,
+        "worker_enable_download": config.worker_enable_download,
+        "worker_enable_describe": config.worker_enable_describe,
+        "worker_enable_publish": config.worker_enable_publish,
+        "worker_publish_dry_run": config.worker_publish_dry_run,
+        "worker_discovery_min_queue_size": config.worker_discovery_min_queue_size,
+        "worker_discovery_source": config.worker_discovery_source,
+        "job_lease_seconds": config.job_lease_seconds,
+        "publish_min_interval_seconds": config.publish_min_interval_seconds,
+        "publish_daily_limit": config.publish_daily_limit,
+        "publish_window_start": config.publish_window_start,
+        "publish_window_end": config.publish_window_end,
+    }
+
+
 def _media_file_response(config: Config, video_id: str, file_type: str) -> tuple[Path, str]:
     media_files = _video_detail(config, video_id)["media_files"]
     if not media_files:
@@ -276,16 +297,7 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
         if method == "GET" and path == "/api/status":
             limit = _parse_int((query.get("events_limit") or [""])[0], 20, minimum=0, maximum=100)
             result = pipeline_status(self.config, events_limit=limit)
-            result["settings"] = {
-                "publish_mode": self.config.publish_mode,
-                "worker_enable_publish": self.config.worker_enable_publish,
-                "worker_publish_dry_run": self.config.worker_publish_dry_run,
-                "job_lease_seconds": self.config.job_lease_seconds,
-                "publish_min_interval_seconds": self.config.publish_min_interval_seconds,
-                "publish_daily_limit": self.config.publish_daily_limit,
-                "publish_window_start": self.config.publish_window_start,
-                "publish_window_end": self.config.publish_window_end,
-            }
+            result["settings"] = _status_settings(self.config)
             self._send_json(result)
             return
 

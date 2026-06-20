@@ -8,6 +8,7 @@ import { DiscoverySection } from "./sections/DiscoverySection";
 import { OverviewSection } from "./sections/OverviewSection";
 import { QueueSection } from "./sections/QueueSection";
 import { StorageSection } from "./sections/StorageSection";
+import { WorkerSection } from "./sections/WorkerSection";
 
 function App() {
   const [toast, setToast] = useState("");
@@ -46,6 +47,7 @@ function App() {
       <nav className="page-nav" aria-label="管理区导航">
         <a href="#overview">总览</a>
         <a href="#queue">队列</a>
+        <a href="#worker">Worker</a>
         <a href="#detail">详情</a>
         <a href="#config">配置</a>
         <a href="#storage">存储</a>
@@ -55,6 +57,7 @@ function App() {
       <main>
         <OverviewSection state={state} actions={actions} />
         <QueueSection state={state} actions={actions} />
+        <WorkerSection state={state} actions={actions} />
         <DetailSection state={state} actions={actions} showToast={showToast} />
         <ConfigSection state={state} actions={actions} />
         <StorageSection state={state} actions={actions} />

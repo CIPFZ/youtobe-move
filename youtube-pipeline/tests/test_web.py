@@ -8,7 +8,7 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.publish_service import update_publish_draft
-from app.web import WebError, _handle_action, _handle_batch_action, _list_videos
+from app.web import WebError, _handle_action, _handle_batch_action, _list_videos, _status_settings
 
 
 class WebTests(unittest.TestCase):
@@ -121,6 +121,31 @@ class WebTests(unittest.TestCase):
         self.assertEqual(result["status"], "created")
         self.assertEqual(video["status"], "selected")
         self.assertEqual(job["status"], "pending")
+
+    def test_status_settings_includes_worker_controls(self):
+        self.config.pipeline_enabled = True
+        self.config.publish_mode = "approved_auto"
+        self.config.worker_interval_seconds = 60
+        self.config.worker_cron = ""
+        self.config.worker_enable_discovery = True
+        self.config.worker_enable_download = True
+        self.config.worker_enable_describe = True
+        self.config.worker_enable_publish = False
+        self.config.worker_publish_dry_run = True
+        self.config.worker_discovery_min_queue_size = 3
+        self.config.worker_discovery_source = None
+        self.config.job_lease_seconds = 1800
+        self.config.publish_min_interval_seconds = 600
+        self.config.publish_daily_limit = 5
+        self.config.publish_window_start = "09:00"
+        self.config.publish_window_end = "23:00"
+
+        settings = _status_settings(self.config)
+
+        self.assertTrue(settings["pipeline_enabled"])
+        self.assertFalse(settings["worker_enable_publish"])
+        self.assertEqual(settings["worker_interval_seconds"], 60)
+        self.assertEqual(settings["worker_discovery_min_queue_size"], 3)
 
     def test_update_publish_draft_marks_manual_and_resets_review(self):
         self.repo.upsert_video(
