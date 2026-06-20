@@ -1,4 +1,4 @@
-import { Button, Select, Space } from "antd";
+import { Button, Select, Space, Table, Tag, Typography } from "antd";
 import { RefreshCw } from "lucide-react";
 import { IconButton } from "../components/IconButton";
 
@@ -11,6 +11,32 @@ export function EventsSection({ state, actions }) {
   const limit = Number(eventFilters.limit || 30);
   const offset = Number(eventFilters.offset || 0);
 
+  const columns = [
+    {
+      title: "事件",
+      width: 240,
+      render: (_, event) => (
+        <Space direction="vertical" size={2}>
+          <Typography.Text strong>{event.event_type}</Typography.Text>
+          <Space size={4} wrap>
+            <Tag>{event.module}</Tag>
+            {event.video_id ? <Tag>{event.video_id}</Tag> : null}
+            {event.job_id ? <Tag>job {event.job_id}</Tag> : null}
+          </Space>
+        </Space>
+      ),
+    },
+    {
+      title: "消息",
+      render: (_, event) => <Typography.Text ellipsis={{ tooltip: event.message || "-" }}>{event.message || "-"}</Typography.Text>,
+    },
+    {
+      title: "时间",
+      width: 180,
+      dataIndex: "created_at",
+    },
+  ];
+
   return (
     <section className="panel wide" id="events">
       <div className="panel-head">
@@ -21,25 +47,35 @@ export function EventsSection({ state, actions }) {
           <IconButton icon={RefreshCw} onClick={() => loadEvents(eventFilters)}>刷新</IconButton>
         </Space>
       </div>
-      <div className="events-toolbar">
-        <Button disabled={offset <= 0} onClick={() => updateEventFilters((prev) => ({ ...prev, offset: Math.max(0, offset - limit) }))}>上一页</Button>
-        <span className="muted">offset {offset} · 当前 {rows.length} 条</span>
-        <Button disabled={!events?.has_more} onClick={() => updateEventFilters((prev) => ({ ...prev, offset: offset + limit }))}>下一页</Button>
-      </div>
-      {rows.length ? (
-        <div className="event-table">
-          {rows.map((event) => (
-            <div className="event-row" key={event.id}>
-              <div>
-                <b>{event.event_type}</b>
-                <span>{event.module} · {event.created_at}</span>
-              </div>
-              <p>{event.message || "-"}</p>
-              <small>{event.video_id || "-"} {event.job_id ? `· job ${event.job_id}` : ""}</small>
-            </div>
-          ))}
-        </div>
-      ) : <div className="panel-body muted">暂无事件。</div>}
+      <Table
+        className="ops-table"
+        columns={columns}
+        dataSource={rows}
+        rowKey="id"
+        pagination={false}
+        size="middle"
+        scroll={{ x: 760 }}
+        footer={() => (
+          <TablePager
+            offset={offset}
+            limit={limit}
+            count={rows.length}
+            hasMore={events?.has_more}
+            onPrev={() => updateEventFilters((prev) => ({ ...prev, offset: Math.max(0, offset - limit) }))}
+            onNext={() => updateEventFilters((prev) => ({ ...prev, offset: offset + limit }))}
+          />
+        )}
+      />
     </section>
+  );
+}
+
+function TablePager({ offset, limit, count, hasMore, onPrev, onNext }) {
+  return (
+    <div className="table-pager">
+      <Button disabled={offset <= 0} onClick={onPrev}>上一页</Button>
+      <span className="muted">offset {offset} · 当前 {count} 条</span>
+      <Button disabled={!hasMore} onClick={onNext}>下一页</Button>
+    </div>
   );
 }

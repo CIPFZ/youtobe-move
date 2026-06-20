@@ -1,10 +1,17 @@
-import { Button, Select, Space } from "antd";
+import { Button, Select, Space, Table, Tag, Typography } from "antd";
 import { RefreshCw } from "lucide-react";
 import { errorOptions } from "../constants";
 import { IconButton } from "../components/IconButton";
 
 const jobTypes = ["", "download", "describe", "publish"];
 const jobStatuses = ["", "pending", "running", "succeeded", "failed", "cancelled"];
+const statusColor = {
+  pending: "default",
+  running: "processing",
+  succeeded: "success",
+  failed: "error",
+  cancelled: "warning",
+};
 
 export function JobsSection({ state, actions }) {
   const { jobs, jobFilters } = state;
@@ -12,6 +19,46 @@ export function JobsSection({ state, actions }) {
   const rows = jobs?.jobs || [];
   const limit = Number(jobFilters.limit || 30);
   const offset = Number(jobFilters.offset || 0);
+
+  const columns = [
+    {
+      title: "Job",
+      width: 150,
+      render: (_, job) => (
+        <Space direction="vertical" size={2}>
+          <Typography.Text strong>#{job.id} {job.job_type}</Typography.Text>
+          <Typography.Text type="secondary">{job.updated_at || "-"}</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: "视频",
+      render: (_, job) => (
+        <Button type="link" className="table-title-link" disabled={!job.video_id} onClick={() => selectVideo(job.video_id)}>
+          {job.video_title || job.video_id || "-"}
+        </Button>
+      ),
+    },
+    {
+      title: "状态",
+      width: 150,
+      render: (_, job) => (
+        <Space wrap size={4}>
+          <Tag color={statusColor[job.status] || "default"}>{job.status}</Tag>
+          {job.error_type ? <Tag color="error">{job.error_type}</Tag> : null}
+        </Space>
+      ),
+    },
+    {
+      title: "尝试",
+      width: 92,
+      render: (_, job) => `${job.attempts || 0}/${job.max_attempts || 0}`,
+    },
+    {
+      title: "错误 / 计划",
+      render: (_, job) => <Typography.Text ellipsis={{ tooltip: job.error || job.next_run_at || job.locked_at || "-" }}>{job.error || job.next_run_at || job.locked_at || "-"}</Typography.Text>,
+    },
+  ];
 
   return (
     <section className="panel wide" id="jobs">
@@ -25,30 +72,35 @@ export function JobsSection({ state, actions }) {
           <IconButton icon={RefreshCw} onClick={() => loadJobs(jobFilters)}>刷新</IconButton>
         </Space>
       </div>
-      <div className="events-toolbar">
-        <Button disabled={offset <= 0} onClick={() => updateJobFilters((prev) => ({ ...prev, offset: Math.max(0, offset - limit) }))}>上一页</Button>
-        <span className="muted">offset {offset} · 当前 {rows.length} 条</span>
-        <Button disabled={!jobs?.has_more} onClick={() => updateJobFilters((prev) => ({ ...prev, offset: offset + limit }))}>下一页</Button>
-      </div>
-      {rows.length ? (
-        <div className="job-table">
-          {rows.map((job) => (
-            <div className="job-row" key={job.id}>
-              <Button type="text" disabled={!job.video_id} onClick={() => selectVideo(job.video_id)}>
-                <b>#{job.id} {job.job_type}</b>
-                <span>{job.video_title || job.video_id || "-"}</span>
-              </Button>
-              <div>
-                <span className={`badge ${job.status}`}>{job.status}</span>
-                {job.error_type ? <span className="badge failed">{job.error_type}</span> : null}
-                <small>{job.attempts || 0}/{job.max_attempts || 0}</small>
-              </div>
-              <p>{job.error || job.next_run_at || job.locked_at || "-"}</p>
-              <small>{job.updated_at}</small>
-            </div>
-          ))}
-        </div>
-      ) : <div className="panel-body muted">暂无 job。</div>}
+      <Table
+        className="ops-table"
+        columns={columns}
+        dataSource={rows}
+        rowKey="id"
+        pagination={false}
+        size="middle"
+        scroll={{ x: 920 }}
+        footer={() => (
+          <TablePager
+            offset={offset}
+            limit={limit}
+            count={rows.length}
+            hasMore={jobs?.has_more}
+            onPrev={() => updateJobFilters((prev) => ({ ...prev, offset: Math.max(0, offset - limit) }))}
+            onNext={() => updateJobFilters((prev) => ({ ...prev, offset: offset + limit }))}
+          />
+        )}
+      />
     </section>
+  );
+}
+
+function TablePager({ offset, limit, count, hasMore, onPrev, onNext }) {
+  return (
+    <div className="table-pager">
+      <Button disabled={offset <= 0} onClick={onPrev}>上一页</Button>
+      <span className="muted">offset {offset} · 当前 {count} 条</span>
+      <Button disabled={!hasMore} onClick={onNext}>下一页</Button>
+    </div>
   );
 }

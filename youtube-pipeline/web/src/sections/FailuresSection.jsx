@@ -1,4 +1,4 @@
-import { Button, Select, Space } from "antd";
+import { Button, Select, Space, Table, Tag, Typography } from "antd";
 import { RefreshCw, RotateCcw } from "lucide-react";
 import { errorOptions } from "../constants";
 import { IconButton } from "../components/IconButton";
@@ -12,6 +12,46 @@ export function FailuresSection({ state, actions }) {
   const limit = Number(failureFilters.limit || 30);
   const offset = Number(failureFilters.offset || 0);
 
+  const columns = [
+    {
+      title: "视频",
+      render: (_, row) => (
+        <Button type="link" className="table-title-link" onClick={() => selectVideo(row.video_id)}>
+          {row.title || row.video_id}
+        </Button>
+      ),
+    },
+    {
+      title: "任务",
+      width: 180,
+      render: (_, row) => (
+        <Space wrap size={4}>
+          <Tag color="error">{row.job_error_type || "unknown"}</Tag>
+          <Tag>{row.job_type || "-"}</Tag>
+        </Space>
+      ),
+    },
+    {
+      title: "尝试",
+      width: 92,
+      render: (_, row) => `${row.job_attempts || 0}/${row.job_max_attempts || 0}`,
+    },
+    {
+      title: "错误",
+      render: (_, row) => <Typography.Text ellipsis={{ tooltip: row.job_error || row.last_error || "-" }}>{row.job_error || row.last_error || "-"}</Typography.Text>,
+    },
+    {
+      title: "下次重试",
+      width: 180,
+      render: (_, row) => row.job_next_run_at || <span className="muted">无自动重试</span>,
+    },
+    {
+      title: "操作",
+      width: 100,
+      render: (_, row) => <IconButton icon={RotateCcw} onClick={() => runVideoAction(row.video_id, "retry")}>重试</IconButton>,
+    },
+  ];
+
   return (
     <section className="panel wide" id="failures">
       <div className="panel-head">
@@ -23,33 +63,36 @@ export function FailuresSection({ state, actions }) {
           <IconButton icon={RefreshCw} onClick={() => loadFailures(failureFilters)}>刷新</IconButton>
         </Space>
       </div>
-      <div className="events-toolbar">
-        <Button disabled={offset <= 0} onClick={() => updateFailureFilters((prev) => ({ ...prev, offset: Math.max(0, offset - limit) }))}>上一页</Button>
-        <span className="muted">offset {offset} · 当前 {rows.length} 条</span>
-        <Button disabled={!failures?.has_more} onClick={() => updateFailureFilters((prev) => ({ ...prev, offset: offset + limit }))}>下一页</Button>
-      </div>
-      {rows.length ? (
-        <div className="failure-table">
-          {rows.map((row) => (
-            <div className={`failure-row${selectedId === row.video_id ? " active" : ""}`} key={row.video_id}>
-              <Button type="text" onClick={() => selectVideo(row.video_id)}>
-                <b>{row.title || row.video_id}</b>
-                <span>{row.video_id} · {row.channel || "-"}</span>
-              </Button>
-              <div>
-                <span className="badge failed">{row.job_error_type || "unknown"}</span>
-                <span className="badge">{row.job_type || "-"}</span>
-                <small>尝试 {row.job_attempts || 0}/{row.job_max_attempts || 0}</small>
-              </div>
-              <p>{row.job_error || row.last_error || "-"}</p>
-              <div>
-                {row.job_next_run_at ? <small>下次重试 {row.job_next_run_at}</small> : <small>无自动重试计划</small>}
-                <IconButton icon={RotateCcw} onClick={() => runVideoAction(row.video_id, "retry")}>重试</IconButton>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : <div className="panel-body muted">暂无失败记录。</div>}
+      <Table
+        className="ops-table"
+        columns={columns}
+        dataSource={rows}
+        rowKey="video_id"
+        rowClassName={(row) => row.video_id === selectedId ? "active-row" : ""}
+        pagination={false}
+        size="middle"
+        scroll={{ x: 980 }}
+        footer={() => (
+          <TablePager
+            offset={offset}
+            limit={limit}
+            count={rows.length}
+            hasMore={failures?.has_more}
+            onPrev={() => updateFailureFilters((prev) => ({ ...prev, offset: Math.max(0, offset - limit) }))}
+            onNext={() => updateFailureFilters((prev) => ({ ...prev, offset: offset + limit }))}
+          />
+        )}
+      />
     </section>
+  );
+}
+
+function TablePager({ offset, limit, count, hasMore, onPrev, onNext }) {
+  return (
+    <div className="table-pager">
+      <Button disabled={offset <= 0} onClick={onPrev}>上一页</Button>
+      <span className="muted">offset {offset} · 当前 {count} 条</span>
+      <Button disabled={!hasMore} onClick={onNext}>下一页</Button>
+    </div>
   );
 }

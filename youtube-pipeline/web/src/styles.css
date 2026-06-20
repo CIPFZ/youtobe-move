@@ -1582,6 +1582,21 @@ textarea {
   background: var(--panel-alt);
 }
 
+.ops-table .ant-table {
+  border-top: 1px solid var(--line);
+}
+
+.ops-table .active-row > td {
+  background: #eef8f6 !important;
+}
+
+.table-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .event-table {
   display: grid;
 }

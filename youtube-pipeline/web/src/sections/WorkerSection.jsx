@@ -1,9 +1,10 @@
+import { Card, Col, Descriptions, List, Row, Space, Statistic, Tag } from "antd";
 import { Play, RefreshCw } from "lucide-react";
 import { IconButton } from "../components/IconButton";
 
 export function WorkerSection({ state, actions }) {
   const { status } = state;
-  const { runWorker, refreshAll } = actions;
+  const { runWorker, loadOperationsPage } = actions;
   const settings = status?.settings || {};
   const jobRows = status?.jobs_by_type_status || [];
   const locks = status?.job_lock_status || {};
@@ -21,70 +22,70 @@ export function WorkerSection({ state, actions }) {
     <section className="panel" id="worker">
       <div className="panel-head">
         <h2>Worker</h2>
-        <div className="toolbar">
+        <Space wrap>
           <IconButton icon={Play} className="primary" onClick={runWorker}>运行一轮</IconButton>
-          <IconButton icon={RefreshCw} onClick={refreshAll}>刷新状态</IconButton>
-        </div>
+          <IconButton icon={RefreshCw} onClick={loadOperationsPage}>刷新状态</IconButton>
+        </Space>
       </div>
-      <div className="worker-grid">
-        <div className="worker-card">
-          <h3>运行开关</h3>
-          <div className="switch-list">
-            {switches.map(([label, value]) => (
-              <div className="switch-row" key={label}>
-                <span>{label}</span>
-                <span className={`badge ${value ? "published" : "failed"}`}>{value ? "on" : "off"}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="worker-card">
-          <h3>调度参数</h3>
-          <div className="kv compact">
-            <div>interval</div><div>{settings.worker_interval_seconds ?? "-"} 秒</div>
-            <div>cron</div><div>{settings.worker_cron || "未启用"}</div>
-            <div>lease</div><div>{settings.job_lease_seconds ?? "-"} 秒</div>
-            <div>队列阈值</div><div>{settings.worker_discovery_min_queue_size ?? "-"}</div>
-            <div>发现源</div><div>{settings.worker_discovery_source || "全部"}</div>
-          </div>
-        </div>
-        <div className="worker-card">
-          <h3>任务锁</h3>
-          <div className="worker-locks">
-            <div><b>{locks.running || 0}</b><span>running</span></div>
-            <div><b>{locks.locked || 0}</b><span>locked</span></div>
-          </div>
-        </div>
-        <div className="worker-card">
-          <h3>Job 分布</h3>
-          {jobRows.length ? (
-            <div className="job-status-table">
-              {jobRows.map((row) => (
-                <div key={`${row.job_type}-${row.status}`}>
-                  <span>{row.job_type}</span>
-                  <span className={`badge ${row.status}`}>{row.status}</span>
-                  <b>{row.count}</b>
-                </div>
-              ))}
-            </div>
-          ) : <div className="muted">暂无 job。</div>}
-        </div>
-        <div className="worker-card wide">
-          <h3>最近 Worker 事件</h3>
-          {workerEvents.length ? (
-            <div className="worker-events">
-              {workerEvents.slice(0, 6).map((event) => (
-                <div className="worker-event" key={event.id}>
-                  <div>
-                    <b>{event.event_type}</b>
-                    <span>{event.created_at}</span>
-                  </div>
-                  <p>{event.message}</p>
-                </div>
-              ))}
-            </div>
-          ) : <div className="muted">暂无 worker 事件。</div>}
-        </div>
+      <div className="panel-body">
+        <Row gutter={[12, 12]}>
+          <Col xs={24} lg={8}>
+            <Card size="small" title="运行开关">
+              <Space wrap>
+                {switches.map(([label, value]) => (
+                  <Tag color={value ? "success" : "error"} key={label}>{label}: {value ? "on" : "off"}</Tag>
+                ))}
+              </Space>
+            </Card>
+          </Col>
+          <Col xs={24} lg={8}>
+            <Card size="small" title="调度参数">
+              <Descriptions column={1} size="small">
+                <Descriptions.Item label="interval">{settings.worker_interval_seconds ?? "-"} 秒</Descriptions.Item>
+                <Descriptions.Item label="cron">{settings.worker_cron || "未启用"}</Descriptions.Item>
+                <Descriptions.Item label="lease">{settings.job_lease_seconds ?? "-"} 秒</Descriptions.Item>
+                <Descriptions.Item label="队列阈值">{settings.worker_discovery_min_queue_size ?? "-"}</Descriptions.Item>
+                <Descriptions.Item label="发现源">{settings.worker_discovery_source || "全部"}</Descriptions.Item>
+              </Descriptions>
+            </Card>
+          </Col>
+          <Col xs={24} lg={8}>
+            <Card size="small" title="任务锁">
+              <Row gutter={12}>
+                <Col span={12}><Statistic title="running" value={locks.running || 0} /></Col>
+                <Col span={12}><Statistic title="locked" value={locks.locked || 0} /></Col>
+              </Row>
+            </Card>
+          </Col>
+          <Col xs={24} lg={12}>
+            <Card size="small" title="Job 分布">
+              {jobRows.length ? (
+                <Space wrap>
+                  {jobRows.map((row) => (
+                    <Tag key={`${row.job_type}-${row.status}`}>{row.job_type} / {row.status}: {row.count}</Tag>
+                  ))}
+                </Space>
+              ) : <span className="muted">暂无 job。</span>}
+            </Card>
+          </Col>
+          <Col xs={24} lg={12}>
+            <Card size="small" title="最近 Worker 事件">
+              <List
+                size="small"
+                dataSource={workerEvents.slice(0, 6)}
+                locale={{ emptyText: "暂无 worker 事件。" }}
+                renderItem={(event) => (
+                  <List.Item>
+                    <List.Item.Meta
+                      title={<Space><span>{event.event_type}</span><Tag>{event.created_at}</Tag></Space>}
+                      description={event.message}
+                    />
+                  </List.Item>
+                )}
+              />
+            </Card>
+          </Col>
+        </Row>
       </div>
     </section>
   );
