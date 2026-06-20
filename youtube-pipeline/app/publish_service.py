@@ -12,13 +12,17 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.job_retry import handle_job_failure
-from app.publisher import build_publish_payload, normalize_tags, normalize_title, publish_payload_to_bilibili
+from app.publisher import build_publish_payload, publish_payload_to_bilibili
 
 
 logger = logging.getLogger("youtube-pipeline")
 
 BILIBILI_PLATFORM = "bilibili"
 PUBLISH_MODES = {"manual", "approved_auto", "full_auto"}
+PUBLISH_TITLE_MAX_LENGTH = 80
+PUBLISH_DESCRIPTION_MAX_LENGTH = 2000
+PUBLISH_TAG_MAX_COUNT = 8
+PUBLISH_TAG_MAX_LENGTH = 20
 
 
 def _ensure_publish_mode(config: Config) -> str:
@@ -165,16 +169,62 @@ def _draft_to_publish_payload(draft: dict[str, Any], media_files: dict[str, Any]
     }
 
 
+def _parse_publish_tags(tags: list[str] | str) -> list[str]:
+    if isinstance(tags, str):
+        return [item.strip() for item in tags.replace("，", ",").split(",") if item.strip()]
+    if isinstance(tags, list):
+        return [str(item).strip() for item in tags if str(item).strip()]
+    return []
+
+
+def _validate_publish_fields(
+    title: str,
+    description: str,
+    tags: list[str] | str,
+    tid: int,
+    config: Config,
+) -> tuple[str, str, list[str], str]:
+    normalized_title = " ".join(str(title or "").split())
+    normalized_description = str(description or "").strip()
+    parsed_tags = _parse_publish_tags(tags)
+
+    if not normalized_title:
+        raise ValueError("Publish draft title is required")
+    if len(normalized_title) > PUBLISH_TITLE_MAX_LENGTH:
+        raise ValueError(f"Publish draft title is too long: max {PUBLISH_TITLE_MAX_LENGTH} characters")
+    if not normalized_description:
+        raise ValueError("Publish draft description is required")
+    if len(normalized_description) > PUBLISH_DESCRIPTION_MAX_LENGTH:
+        raise ValueError(f"Publish draft description is too long: max {PUBLISH_DESCRIPTION_MAX_LENGTH} characters")
+    if len(parsed_tags) > PUBLISH_TAG_MAX_COUNT:
+        raise ValueError(f"Publish draft has too many tags: max {PUBLISH_TAG_MAX_COUNT}")
+    long_tags = [tag for tag in parsed_tags if len(tag) > PUBLISH_TAG_MAX_LENGTH]
+    if long_tags:
+        raise ValueError(f"Publish draft tag is too long: max {PUBLISH_TAG_MAX_LENGTH} characters")
+
+    allowed_tids = parse_tid_options(config.bilibili_tid_options)
+    if allowed_tids and int(tid) not in allowed_tids:
+        raise ValueError(f"Publish draft tid is not allowed: {tid}")
+    return normalized_title, normalized_description, parsed_tags, allowed_tids.get(int(tid), "")
+
+
 def _validate_publish_draft(draft: dict[str, Any], config: Config) -> None:
-    if not draft.get("title") or not draft.get("description"):
-        raise RuntimeError("Publish draft title/description is missing")
     if draft.get("tid") is None:
         raise RuntimeError("Publish draft tid is missing")
 
-    allowed_tids = parse_tid_options(config.bilibili_tid_options)
-    tid = int(draft["tid"])
-    if allowed_tids and tid not in allowed_tids:
-        raise RuntimeError(f"Publish draft tid is not allowed: {tid}")
+    try:
+        tags = json.loads(str(draft.get("tags_json") or "[]"))
+        _validate_publish_fields(
+            str(draft.get("title") or ""),
+            str(draft.get("description") or ""),
+            tags,
+            int(draft["tid"]),
+            config,
+        )
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Publish draft tags are invalid") from exc
     if str(draft.get("tid_source") or "") == "fallback":
         raise RuntimeError("Publish draft tid came from fallback; regenerate or review before real publish")
 
@@ -427,18 +477,7 @@ def update_publish_draft(
     status: str = "pending",
     platform: str = BILIBILI_PLATFORM,
 ) -> dict[str, Any]:
-    title = normalize_title(title)
-    description = str(description or "").strip()
-    parsed_tags = normalize_tags(tags)
-    if not title:
-        raise ValueError("Publish draft title is required")
-    if not description:
-        raise ValueError("Publish draft description is required")
-
-    allowed_tids = parse_tid_options(config.bilibili_tid_options)
-    if allowed_tids and int(tid) not in allowed_tids:
-        raise ValueError(f"Publish draft tid is not allowed: {tid}")
-    tid_label = allowed_tids.get(int(tid), "")
+    title, description, parsed_tags, tid_label = _validate_publish_fields(title, description, tags, tid, config)
 
     with connect(config.db_path) as conn:
         init_schema(conn)

@@ -407,6 +407,24 @@ textarea {
   font-size: 12px;
 }
 
+.draft-form label span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.draft-form label em,
+.draft-form label small {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.form-error {
+  color: #b42318;
+  font-size: 13px;
+}
+
 .draft-row {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) minmax(120px, 0.5fr);

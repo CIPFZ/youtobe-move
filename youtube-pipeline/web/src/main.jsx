@@ -21,6 +21,12 @@ import "./styles.css";
 const statusOptions = ["selected", "downloaded", "ready_to_publish", "published", "failed", "skipped"];
 const draftOptions = ["pending", "approved", "rejected"];
 const errorOptions = ["youtube_403", "network_error", "llm_failed", "publish_failed", "unknown"];
+const draftLimits = {
+  title: 80,
+  description: 2000,
+  tags: 8,
+  tagLength: 20,
+};
 const configFields = [
   "PIPELINE_ENABLED",
   "WORKER_INTERVAL_SECONDS",
@@ -105,6 +111,14 @@ function parseTags(raw) {
 
 function tagsToText(raw) {
   return parseTags(raw).join(", ");
+}
+
+function parseTagText(raw) {
+  return String(raw || "")
+    .replaceAll("，", ",")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function parseTidOptions(raw) {
@@ -849,6 +863,7 @@ function VideoDetail({ data, configByKey, onAction, onSaved, showToast }) {
   const tidOptions = parseTidOptions(configByKey?.BILIBILI_TID_OPTIONS?.value);
   const [draftForm, setDraftForm] = useState(() => makeDraftForm(draft));
   const [savingDraft, setSavingDraft] = useState(false);
+  const draftErrors = validateDraftForm(draftForm);
 
   useEffect(() => {
     setDraftForm(makeDraftForm(draft));
@@ -860,6 +875,10 @@ function VideoDetail({ data, configByKey, onAction, onSaved, showToast }) {
 
   async function saveDraft() {
     if (!draft.title) return;
+    if (draftErrors.length) {
+      showToast(draftErrors[0]);
+      return;
+    }
     setSavingDraft(true);
     try {
       const result = await api(`/api/videos/${encodeURIComponent(video.video_id)}/draft`, {
@@ -916,16 +935,17 @@ function VideoDetail({ data, configByKey, onAction, onSaved, showToast }) {
             <>
               <div className="draft-form">
                 <label>
-                  <span>标题</span>
+                  <span>标题 <em>{draftForm.title.length}/{draftLimits.title}</em></span>
                   <input value={draftForm.title} onChange={(event) => updateDraftField("title", event.target.value)} maxLength={80} />
                 </label>
                 <label>
-                  <span>描述</span>
+                  <span>描述 <em>{draftForm.description.length}/{draftLimits.description}</em></span>
                   <textarea value={draftForm.description} onChange={(event) => updateDraftField("description", event.target.value)} rows={7} />
                 </label>
                 <label>
                   <span>标签</span>
                   <input value={draftForm.tags} onChange={(event) => updateDraftField("tags", event.target.value)} placeholder="使用逗号分隔" />
+                  <small>最多 {draftLimits.tags} 个，每个不超过 {draftLimits.tagLength} 个字符。</small>
                 </label>
                 <div className="draft-row">
                   <label>
@@ -945,8 +965,9 @@ function VideoDetail({ data, configByKey, onAction, onSaved, showToast }) {
                     </select>
                   </label>
                 </div>
+                {draftErrors.length ? <div className="form-error">{draftErrors[0]}</div> : null}
                 <div className="toolbar">
-                  <IconButton icon={Save} className="primary" onClick={saveDraft} disabled={savingDraft}>保存草稿</IconButton>
+                  <IconButton icon={Save} className="primary" onClick={saveDraft} disabled={savingDraft || Boolean(draftErrors.length)}>保存草稿</IconButton>
                   <span className="muted">保存后分区来源会标记为 manual。</span>
                 </div>
               </div>
@@ -1012,6 +1033,21 @@ function makeDraftForm(draft) {
     tid: draft.tid ? String(draft.tid) : "",
     status: draft.status || "pending",
   };
+}
+
+function validateDraftForm(form) {
+  const errors = [];
+  const title = String(form.title || "").trim();
+  const description = String(form.description || "").trim();
+  const tags = parseTagText(form.tags);
+  if (!title) errors.push("标题不能为空");
+  if (title.length > draftLimits.title) errors.push(`标题不能超过 ${draftLimits.title} 个字符`);
+  if (!description) errors.push("描述不能为空");
+  if (description.length > draftLimits.description) errors.push(`描述不能超过 ${draftLimits.description} 个字符`);
+  if (tags.length > draftLimits.tags) errors.push(`标签不能超过 ${draftLimits.tags} 个`);
+  if (tags.some((tag) => tag.length > draftLimits.tagLength)) errors.push(`单个标签不能超过 ${draftLimits.tagLength} 个字符`);
+  if (!form.tid) errors.push("请选择发布分区");
+  return errors;
 }
 
 function ConfigPanel({ config, configByKey }) {

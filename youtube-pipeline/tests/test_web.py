@@ -182,6 +182,110 @@ class WebTests(unittest.TestCase):
                 tid=999,
             )
 
+    def test_update_publish_draft_rejects_too_long_title(self):
+        self.repo.upsert_video(
+            "abc123def45",
+            "https://www.youtube.com/watch?v=abc123def45",
+            status="ready_to_publish",
+        )
+        self.repo.save_publish_draft(
+            "abc123def45",
+            "bilibili",
+            title="Old title",
+            description="Old body",
+            tags=["old"],
+            tid=27,
+            tid_source="llm",
+        )
+
+        with self.assertRaises(ValueError):
+            update_publish_draft(
+                "abc123def45",
+                self.config,
+                title="T" * 81,
+                description="New body",
+                tags=["tag"],
+                tid=27,
+            )
+
+    def test_update_publish_draft_rejects_too_long_description(self):
+        self.repo.upsert_video(
+            "abc123def45",
+            "https://www.youtube.com/watch?v=abc123def45",
+            status="ready_to_publish",
+        )
+        self.repo.save_publish_draft(
+            "abc123def45",
+            "bilibili",
+            title="Old title",
+            description="Old body",
+            tags=["old"],
+            tid=27,
+            tid_source="llm",
+        )
+
+        with self.assertRaises(ValueError):
+            update_publish_draft(
+                "abc123def45",
+                self.config,
+                title="New title",
+                description="D" * 2001,
+                tags=["tag"],
+                tid=27,
+            )
+
+    def test_update_publish_draft_rejects_too_many_tags(self):
+        self.repo.upsert_video(
+            "abc123def45",
+            "https://www.youtube.com/watch?v=abc123def45",
+            status="ready_to_publish",
+        )
+        self.repo.save_publish_draft(
+            "abc123def45",
+            "bilibili",
+            title="Old title",
+            description="Old body",
+            tags=["old"],
+            tid=27,
+            tid_source="llm",
+        )
+
+        with self.assertRaises(ValueError):
+            update_publish_draft(
+                "abc123def45",
+                self.config,
+                title="New title",
+                description="New body",
+                tags=[f"tag{i}" for i in range(9)],
+                tid=27,
+            )
+
+    def test_update_publish_draft_rejects_too_long_tag(self):
+        self.repo.upsert_video(
+            "abc123def45",
+            "https://www.youtube.com/watch?v=abc123def45",
+            status="ready_to_publish",
+        )
+        self.repo.save_publish_draft(
+            "abc123def45",
+            "bilibili",
+            title="Old title",
+            description="Old body",
+            tags=["old"],
+            tid=27,
+            tid_source="llm",
+        )
+
+        with self.assertRaises(ValueError):
+            update_publish_draft(
+                "abc123def45",
+                self.config,
+                title="New title",
+                description="New body",
+                tags=["x" * 21],
+                tid=27,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
