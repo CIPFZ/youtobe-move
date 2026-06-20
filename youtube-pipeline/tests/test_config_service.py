@@ -38,6 +38,25 @@ class ConfigServiceTests(unittest.TestCase):
         self.assertTrue(youtube["YOUTUBE_API_KEY"]["sensitive"])
         self.assertIs(pipeline["PIPELINE_ENABLED"]["value"], True)
 
+    def test_list_config_uses_env_example_defaults_for_missing_local_values(self):
+        (self.base_dir / ".env.example").write_text(
+            "\n".join(
+                [
+                    "STORAGE_PUBLISHED_RETENTION_DAYS=9",
+                    "LOG_LEVEL=INFO",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = list_config(self.base_dir)
+
+        storage = {item["key"]: item for item in result["groups"]["storage"]}
+        logging = {item["key"]: item for item in result["groups"]["logging"]}
+        self.assertEqual(storage["STORAGE_PUBLISHED_RETENTION_DAYS"]["value"], 9)
+        self.assertEqual(logging["LOG_LEVEL"]["value"], "INFO")
+
     def test_update_config_validates_writes_env_and_audit_event(self):
         result = update_config(
             {

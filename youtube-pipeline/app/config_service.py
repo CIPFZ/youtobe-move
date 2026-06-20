@@ -104,8 +104,16 @@ def _env_path(base_dir: Path | None = None) -> Path:
     return (base_dir or Path.cwd()) / ".env"
 
 
+def _example_env_path(base_dir: Path) -> Path:
+    local_example = base_dir / ".env.example"
+    if local_example.exists():
+        return local_example
+    return Path(__file__).resolve().parents[1] / ".env.example"
+
+
 def _read_env(env_path: Path) -> dict[str, str]:
-    values = {key: value or "" for key, value in dotenv_values(env_path).items()}
+    values = {key: value or "" for key, value in dotenv_values(_example_env_path(env_path.parent)).items()}
+    values.update({key: value or "" for key, value in dotenv_values(env_path).items()})
     for key in CONFIG_FIELD_BY_KEY:
         if key not in values and key in os.environ:
             values[key] = os.environ[key]

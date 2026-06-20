@@ -6,6 +6,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
+def _example_env_path(base_dir: Path) -> Path:
+    local_example = base_dir / ".env.example"
+    if local_example.exists():
+        return local_example
+    return Path(__file__).resolve().parents[1] / ".env.example"
+
+
 class Config:
     def __init__(self, base_dir: Path | None = None) -> None:
         self.base_dir = base_dir or Path.cwd()
@@ -86,5 +93,6 @@ class Config:
 
 def load_config() -> Config:
     env_path = Path(".env").resolve()
+    load_dotenv(_example_env_path(env_path.parent), override=False)
     load_dotenv(env_path, override=True)
     return Config(base_dir=env_path.parent)
