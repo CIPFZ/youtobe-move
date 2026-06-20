@@ -1019,6 +1019,11 @@ textarea {
   border-color: #f3b7b2;
 }
 
+.job-card.lock-overdue {
+  border-color: #f3b7b2;
+  background: #fffafa;
+}
+
 .job-card.running,
 .job-card.pending {
   border-color: #f0d28a;
@@ -1031,6 +1036,13 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.job-card-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .job-meta {

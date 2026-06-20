@@ -23,6 +23,7 @@ export function VideoDetail({ data, configByKey, onAction, onSaved, showToast })
   const canSkip = !["published", "skipped"].includes(video.status);
   const canCleanupMedia = Boolean(data.media_files?.merged_path || data.media_files?.video_path || data.media_files?.audio_path || data.media_files?.poster_path);
   const tidOptions = parseTidOptions(configByKey?.BILIBILI_TID_OPTIONS?.value);
+  const jobLeaseSeconds = Number(configByKey?.JOB_LEASE_SECONDS?.value || 0);
   const [draftForm, setDraftForm] = useState(() => makeDraftForm(draft));
   const [savingDraft, setSavingDraft] = useState(false);
   const draftErrors = validateDraftForm(draftForm);
@@ -141,7 +142,7 @@ export function VideoDetail({ data, configByKey, onAction, onSaved, showToast })
 
         <section className="section">
           <h2>任务状态</h2>
-          <JobTimeline jobs={jobs} />
+          <JobTimeline jobs={jobs} leaseSeconds={jobLeaseSeconds} />
         </section>
 
         <section className="section">
@@ -241,22 +242,26 @@ function DraftTags({ draft }) {
   );
 }
 
-function JobTimeline({ jobs }) {
+function JobTimeline({ jobs, leaseSeconds }) {
   if (!jobs.length) return <div className="muted">暂无任务记录。</div>;
   return (
     <div className="job-grid">
       {jobs.map(([name, job]) => {
         const attempts = `${job.attempts || 0}/${job.max_attempts || 0}`;
+        const lockState = getLockState(job, leaseSeconds);
         const details = [
           job.error_type ? `错误类型 ${job.error_type}` : "",
           job.next_run_at ? `下次重试 ${job.next_run_at}` : "",
-          job.locked_at ? `锁定 ${job.lock_owner || "-"} ${job.locked_at}` : "",
+          lockState ? `锁定 ${job.lock_owner || "-"} ${job.locked_at}` : "",
         ].filter(Boolean);
         return (
-          <div className={`job-card ${job.status}`} key={name}>
+          <div className={`job-card ${job.status}${lockState?.overdue ? " lock-overdue" : ""}`} key={name}>
             <div className="job-card-head">
               <b>{name}</b>
-              <span className={`badge ${job.status}`}>{job.status}</span>
+              <div className="job-card-badges">
+                {lockState ? <span className={`badge ${lockState.overdue ? "failed" : "publishing"}`}>{lockState.label}</span> : null}
+                <span className={`badge ${job.status}`}>{job.status}</span>
+              </div>
             </div>
             <div className="job-meta">
               <span>尝试 {attempts}</span>
@@ -268,6 +273,17 @@ function JobTimeline({ jobs }) {
       })}
     </div>
   );
+}
+
+function getLockState(job, leaseSeconds) {
+  if (!job.locked_at || !leaseSeconds) return null;
+  const lockedAt = new Date(`${String(job.locked_at).replace(" ", "T")}Z`);
+  if (Number.isNaN(lockedAt.getTime())) return { overdue: false, label: "locked" };
+  const ageSeconds = Math.max(0, (Date.now() - lockedAt.getTime()) / 1000);
+  return {
+    overdue: ageSeconds > leaseSeconds,
+    label: ageSeconds > leaseSeconds ? "lock overdue" : "locked",
+  };
 }
 
 function PublishRecords({ records }) {
