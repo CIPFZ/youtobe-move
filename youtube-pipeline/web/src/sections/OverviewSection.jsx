@@ -1,12 +1,14 @@
 import { AlertTriangle, CheckCircle2, Clock, Database, HardDrive, PauseCircle, PlayCircle } from "lucide-react";
 import { fmtBytes, statusMap } from "../format";
 
-export function OverviewSection({ state }) {
+export function OverviewSection({ state, actions }) {
   const { status, storage } = state;
+  const { selectVideo, applyQueuePreset } = actions;
   const counts = statusMap(status?.videos_by_status);
   const locks = status?.job_lock_status || {};
   const settings = status?.settings || {};
   const failedVideos = status?.failed_videos || [];
+  const recentEvents = status?.recent_events || [];
   const publishEnabled = Boolean(settings.worker_enable_publish);
   const dryRun = Boolean(settings.worker_publish_dry_run);
   const storageAlerts = [
@@ -88,6 +90,44 @@ export function OverviewSection({ state }) {
           {storageAlerts.map((item) => <span className="badge failed" key={item}>{item}</span>)}
         </div>
       ) : null}
+      <div className="overview-lanes">
+        <div className="overview-lane">
+          <div className="overview-lane-head">
+            <h3>最近失败</h3>
+            {failedVideos.length ? <button onClick={() => applyQueuePreset("failed")}>查看失败队列</button> : null}
+          </div>
+          {failedVideos.length ? (
+            <div className="overview-failures">
+              {failedVideos.slice(0, 5).map((video) => (
+                <button className="overview-failure" key={video.video_id} onClick={() => selectVideo(video.video_id)}>
+                  <span>{video.title || video.video_id}</span>
+                  <small>{video.video_id} · {video.last_error || "无错误详情"}</small>
+                </button>
+              ))}
+            </div>
+          ) : <div className="overview-empty">暂无失败视频。</div>}
+        </div>
+        <div className="overview-lane">
+          <div className="overview-lane-head">
+            <h3>最近事件</h3>
+            <span className="muted">最新 {recentEvents.length} 条</span>
+          </div>
+          {recentEvents.length ? (
+            <div className="overview-events">
+              {recentEvents.slice(0, 6).map((event) => (
+                <div className="overview-event" key={event.id}>
+                  <div>
+                    <b>{event.event_type}</b>
+                    <span>{event.module}</span>
+                  </div>
+                  <small>{event.created_at}</small>
+                  <p>{event.message}</p>
+                </div>
+              ))}
+            </div>
+          ) : <div className="overview-empty">暂无事件。</div>}
+        </div>
+      </div>
     </section>
   );
 }

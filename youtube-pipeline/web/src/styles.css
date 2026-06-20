@@ -249,6 +249,117 @@ main {
   padding: 0 16px 14px;
 }
 
+.overview-lanes {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.overview-lane {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.overview-lane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-alt);
+}
+
+.overview-lane-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.overview-failures,
+.overview-events {
+  display: grid;
+  gap: 0;
+}
+
+.overview-failure {
+  display: grid;
+  height: auto;
+  min-height: 58px;
+  justify-items: start;
+  gap: 4px;
+  padding: 9px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  text-align: left;
+}
+
+.overview-failure:hover {
+  background: #fbfcfd;
+}
+
+.overview-failure span,
+.overview-failure small {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-failure span {
+  font-weight: 650;
+}
+
+.overview-failure small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.overview-event {
+  min-width: 0;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.overview-event:last-child,
+.overview-failure:last-child {
+  border-bottom: 0;
+}
+
+.overview-event div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.overview-event b,
+.overview-event p {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-event span,
+.overview-event small,
+.overview-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.overview-event p {
+  margin: 4px 0 0;
+}
+
+.overview-empty {
+  padding: 12px;
+}
+
 .storage-stats {
   margin: -16px -16px 0;
 }
@@ -1027,6 +1138,7 @@ textarea {
   .discovery-layout,
   .draft-summary,
   .overview-grid,
+  .overview-lanes,
   .preview-columns,
   .storage-grid,
   .stats {
@@ -1047,6 +1159,7 @@ textarea {
 
   .stats,
   .overview-grid,
+  .overview-lanes,
   .discovery-layout,
   .preview-columns,
   .storage-grid,

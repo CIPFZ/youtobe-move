@@ -53,7 +53,7 @@ function App() {
       </nav>
 
       <main>
-        <OverviewSection state={state} />
+        <OverviewSection state={state} actions={actions} />
         <QueueSection state={state} actions={actions} />
         <DetailSection state={state} actions={actions} showToast={showToast} />
         <ConfigSection state={state} actions={actions} />
