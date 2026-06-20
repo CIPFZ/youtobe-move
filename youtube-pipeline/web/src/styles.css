@@ -1289,6 +1289,59 @@ textarea {
   margin-top: 12px;
 }
 
+.config-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.config-summary-item {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.config-summary-item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.config-summary-item strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.config-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.config-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.config-nav span {
+  color: var(--muted);
+}
+
 .config-groups {
   display: grid;
   gap: 14px;
@@ -1316,6 +1369,12 @@ textarea {
   font-size: 14px;
 }
 
+.config-group-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .config-group-head span {
   color: var(--muted);
   font-size: 12px;
@@ -1331,6 +1390,7 @@ textarea {
 .config-field {
   display: grid;
   gap: 6px;
+  align-content: start;
 }
 
 .config-field label {
@@ -1344,6 +1404,13 @@ textarea {
 
 .config-field label span {
   color: var(--danger);
+}
+
+.config-field small {
+  min-height: 30px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .config-field textarea {
@@ -1587,6 +1654,7 @@ textarea {
   }
 
   .config-grid,
+  .config-summary,
   .discovery-layout,
   .draft-summary,
   .overview-grid,
@@ -1617,6 +1685,7 @@ textarea {
   .preview-columns,
   .storage-grid,
   .config-grid,
+  .config-summary,
   .worker-grid {
     grid-template-columns: 1fr;
   }

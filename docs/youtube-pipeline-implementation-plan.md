@@ -871,12 +871,17 @@ P9.1 配置与开关已完成：
   - 每轮运行前重新加载 `.env`。
   - 每次 sleep 前重新加载 `.env`，让 `WORKER_CRON` / `WORKER_INTERVAL_SECONDS` 在下一次调度前生效。
   - 命令行显式传入的 `--interval`、`--enable-publish`、`--publish-dry-run` 继续优先于 `.env`。
-- Web 当前页面新增最小配置面板，可编辑常用配置：
+- Web 配置页已完成基础交互优化：
   - pipeline 开关
   - worker interval/cron
   - discovery/download/describe/publish 开关
   - proxy/retries
   - publish mode/limit/interval
+  - 关键配置摘要
+  - 分组导航
+  - 分组说明
+  - 常用字段说明
+  - 敏感字段标记
 - 单元测试覆盖：
   - 配置分组和敏感字段脱敏。
   - 合法更新写回 `.env` 并写 audit event。
@@ -886,7 +891,7 @@ P9.1 配置与开关已完成：
 
 P9.1 未完成：
 
-- 配置页最终交互设计；当前是最小可用面板。
+- 暂无。后续可根据实际使用继续补充字段级帮助和危险配置确认。
 
 P9.2 队列管理已完成基础版：
 
