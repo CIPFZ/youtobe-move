@@ -228,6 +228,22 @@ textarea {
   background: var(--panel-alt);
 }
 
+.queue-meta-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.4fr) minmax(180px, 1fr);
+  gap: 8px;
+}
+
+.queue-meta-row label {
+  display: grid;
+  gap: 6px;
+}
+
+.queue-meta-row label span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .video-list {
   max-height: calc(100vh - 280px);
   overflow: auto;

@@ -140,6 +140,8 @@ function App() {
   const [filters, setFilters] = useState({ status: "", draftStatus: "", errorType: "" });
   const [selectedVideoIds, setSelectedVideoIds] = useState([]);
   const [addUrls, setAddUrls] = useState("");
+  const [addPriority, setAddPriority] = useState("100");
+  const [addSourceLabel, setAddSourceLabel] = useState("web");
   const [toast, setToast] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -266,7 +268,11 @@ function App() {
     try {
       const result = await api("/api/videos/add-urls", {
         method: "POST",
-        body: JSON.stringify({ urls: value }),
+        body: JSON.stringify({
+          urls: value,
+          priority: Number.parseInt(addPriority || "100", 10),
+          source_label: addSourceLabel.trim() || "web",
+        }),
       });
       setAddUrls("");
       showToast(`添加完成：created=${result.created_count}, exists=${result.exists_count}, errors=${result.error_count}`);
@@ -427,6 +433,16 @@ function App() {
           </div>
           <div className="add-url-box">
             <textarea value={addUrls} onChange={(event) => setAddUrls(event.target.value)} placeholder="输入 YouTube 链接，支持一行一个" />
+            <div className="queue-meta-row">
+              <label>
+                <span>优先级</span>
+                <input value={addPriority} onChange={(event) => setAddPriority(event.target.value)} />
+              </label>
+              <label>
+                <span>来源标签</span>
+                <input value={addSourceLabel} onChange={(event) => setAddSourceLabel(event.target.value)} />
+              </label>
+            </div>
             <div className="toolbar">
               <IconButton icon={Send} className="primary" onClick={addQueueUrls}>添加到队列</IconButton>
               <span className="muted">重复 video_id 不会重复入库。</span>
@@ -798,6 +814,8 @@ function VideoList({ videos, selectedId, selectedVideoIds, onToggleSelected, onS
                 <div className="meta-line">{escapeText(video.channel || "-")} · {fmtDuration(video.duration)} · {fmtCount(video.view_count)} views</div>
                 <div className="badges">
                   <span className={`badge ${video.status}`}>{video.status}</span>
+                  <span className="badge">P{video.priority ?? 100}</span>
+                  {video.source_label ? <span className="badge">{video.source_label}</span> : null}
                   {draft.status ? <span className="badge">{draft.status}</span> : null}
                   {draft.tid ? <span className="badge">tid {draft.tid}</span> : null}
                   {draft.tid_source ? <span className="badge">{draft.tid_source}</span> : null}
@@ -874,6 +892,8 @@ function VideoDetail({ data, configByKey, onAction, onSaved, showToast }) {
             <div>时长</div><div>{fmtDuration(video.duration)}</div>
             <div>播放</div><div>{fmtCount(video.view_count)}</div>
             <div>分类</div><div>{video.category || "-"}</div>
+            <div>优先级</div><div>{video.priority ?? 100}</div>
+            <div>来源标签</div><div>{video.source_label || "-"}</div>
             <div>原链接</div><div><a href={video.source_url} target="_blank" rel="noreferrer">{video.source_url}</a></div>
           </div>
           {video.last_error ? <p className="badge failed">{video.last_error}</p> : null}

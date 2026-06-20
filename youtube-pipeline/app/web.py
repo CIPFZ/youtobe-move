@@ -325,7 +325,9 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
             if not url:
                 raise WebError(HTTPStatus.BAD_REQUEST, "url is required")
             status = str(body.get("status") or "selected")
-            self._send_json(add_video_url(url, self.config, status=status, source="web"))
+            priority = int(body.get("priority") or 100)
+            source_label = str(body.get("source_label") or "web")
+            self._send_json(add_video_url(url, self.config, status=status, source="web", priority=priority, source_label=source_label))
             return
 
         if method == "POST" and path == "/api/videos/add-urls":
@@ -337,7 +339,9 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
             else:
                 raise WebError(HTTPStatus.BAD_REQUEST, "urls must be a string or list")
             status = str(body.get("status") or "selected")
-            self._send_json(add_video_urls(urls, self.config, status=status, source="web"))
+            priority = int(body.get("priority") or 100)
+            source_label = str(body.get("source_label") or "web")
+            self._send_json(add_video_urls(urls, self.config, status=status, source="web", priority=priority, source_label=source_label))
             return
 
         if method == "POST" and path == "/api/videos/batch":

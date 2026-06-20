@@ -28,6 +28,8 @@ class Repository:
         duration: int | None = None,
         view_count: int | None = None,
         category: str = "",
+        priority: int = 100,
+        source_label: str = "",
     ) -> dict[str, Any]:
         ensure_video_status(status)
         existing = self.get_video(video_id)
@@ -40,21 +42,23 @@ class Repository:
                     duration=COALESCE(?, duration),
                     view_count=COALESCE(?, view_count),
                     category=COALESCE(NULLIF(?, ''), category),
+                    priority=COALESCE(?, priority),
+                    source_label=COALESCE(NULLIF(?, ''), source_label),
                     updated_at=CURRENT_TIMESTAMP
                 WHERE video_id=?
                 """,
-                (source_url, title, channel, duration, view_count, category, video_id),
+                (source_url, title, channel, duration, view_count, category, priority, source_label, video_id),
             )
             self.create_event(video_id, None, "core", "video_upsert_existing", "Video already exists")
         else:
             self.conn.execute(
                 """
                 INSERT INTO videos (
-                    video_id, source_url, title, channel, duration, view_count, category, status
+                    video_id, source_url, title, channel, duration, view_count, category, priority, source_label, status
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (video_id, source_url, title, channel, duration, view_count, category, status),
+                (video_id, source_url, title, channel, duration, view_count, category, priority, source_label, status),
             )
             self.create_event(video_id, None, "core", "video_created", f"Video added with status={status}")
         self.conn.commit()
@@ -71,12 +75,12 @@ class Repository:
         if status:
             ensure_video_status(status)
             rows = self.conn.execute(
-                "SELECT * FROM videos WHERE status=? ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+                "SELECT * FROM videos WHERE status=? ORDER BY priority ASC, updated_at DESC LIMIT ? OFFSET ?",
                 (status, limit, offset),
             ).fetchall()
         else:
             rows = self.conn.execute(
-                "SELECT * FROM videos ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+                "SELECT * FROM videos ORDER BY priority ASC, updated_at DESC LIMIT ? OFFSET ?",
                 (limit, offset),
             ).fetchall()
         return [dict(row) for row in rows]

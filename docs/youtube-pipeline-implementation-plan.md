@@ -886,10 +886,17 @@ P9.2 队列管理已完成基础版：
 - 手动添加时规范化 source URL 为 `https://www.youtube.com/watch?v=<video_id>`。
 - `video_id` 已存在时返回 `exists`，不重复创建视频和 download job。
 - 新视频进入 `selected` 并创建 pending download job。
+- `videos` 新增队列字段：
+  - `priority`
+  - `source_label`
+- 手动添加 URL 支持设置 priority 和 source_label。
+- discovery 入库会使用 source priority 和 source name。
+- 队列查询和下载 fallback 会按 priority 升序处理。
 - 新增 Web API：
   - `POST /api/videos/add-url`
   - `POST /api/videos/add-urls`
 - Web 队列页新增批量 URL 输入框。
+- Web 手动添加任务支持填写 priority 和 source_label。
 - Web 队列页新增筛选：
   - `status`
   - `draft_status`
@@ -910,11 +917,10 @@ P9.2 队列管理已完成基础版：
   - Web 列表按 draft/error 筛选。
   - 批量操作部分失败。
   - 不支持的批量动作拒绝执行。
+  - priority 排序。
 
 P9.2 未完成：
 
-- 优先级字段。
-- 来源标签字段。
 - 更完整的批量操作，如批量 reject、批量 real publish 预览；真实发布仍不建议批量。
 - 列表筛选目前是 Web 层基础实现，后续数据量变大时需要下沉到 repository SQL。
 

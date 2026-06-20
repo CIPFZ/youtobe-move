@@ -20,7 +20,14 @@ def canonical_youtube_url(video_id: str) -> str:
     return f"https://www.youtube.com/watch?v={video_id}"
 
 
-def add_video_url(url: str, config: Config, status: str = "selected", source: str = "manual") -> dict[str, Any]:
+def add_video_url(
+    url: str,
+    config: Config,
+    status: str = "selected",
+    source: str = "manual",
+    priority: int = 100,
+    source_label: str = "",
+) -> dict[str, Any]:
     video_id = parse_video_id(url)
     source_url = canonical_youtube_url(video_id)
     with connect(config.db_path) as conn:
@@ -35,7 +42,7 @@ def add_video_url(url: str, config: Config, status: str = "selected", source: st
                 "operations",
                 "manual_add_duplicate",
                 "Manual URL already exists",
-                {"source": source, "input_url": url, "source_url": source_url},
+                {"source": source, "input_url": url, "source_url": source_url, "priority": priority, "source_label": source_label},
             )
             conn.commit()
             return {
@@ -44,21 +51,38 @@ def add_video_url(url: str, config: Config, status: str = "selected", source: st
                 "job_id": int(latest_download_job["id"]) if latest_download_job else None,
             }
 
-        video = repo.upsert_video(video_id=video_id, source_url=source_url, status=status)
-        job_id = repo.create_job("download", video_id=video_id, payload={"url": source_url, "source": source})
+        video = repo.upsert_video(
+            video_id=video_id,
+            source_url=source_url,
+            status=status,
+            priority=priority,
+            source_label=source_label or source,
+        )
+        job_id = repo.create_job(
+            "download",
+            video_id=video_id,
+            payload={"url": source_url, "source": source, "priority": priority, "source_label": source_label or source},
+        )
         repo.create_event(
             video_id,
             job_id,
             "operations",
             "manual_add_created",
             "Manual URL added to queue",
-            {"source": source, "input_url": url, "source_url": source_url},
+            {"source": source, "input_url": url, "source_url": source_url, "priority": priority, "source_label": source_label or source},
         )
         conn.commit()
         return {"status": "created", "video": video, "job_id": job_id}
 
 
-def add_video_urls(urls: list[str], config: Config, status: str = "selected", source: str = "manual") -> dict[str, Any]:
+def add_video_urls(
+    urls: list[str],
+    config: Config,
+    status: str = "selected",
+    source: str = "manual",
+    priority: int = 100,
+    source_label: str = "",
+) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
     for url in urls:
@@ -66,7 +90,7 @@ def add_video_urls(urls: list[str], config: Config, status: str = "selected", so
         if not cleaned:
             continue
         try:
-            results.append(add_video_url(cleaned, config, status=status, source=source))
+            results.append(add_video_url(cleaned, config, status=status, source=source, priority=priority, source_label=source_label))
         except Exception as exc:
             errors.append({"url": cleaned, "error": str(exc)})
     return {

@@ -76,6 +76,8 @@ def discover_videos(config: Config, source_type: str | None = None, dry_run: boo
                 duration=candidate.duration,
                 view_count=candidate.view_count,
                 category=candidate.category,
+                priority=int(candidate.source_params.get("priority") or 100),
+                source_label=candidate.source_name,
             )
             job_id = repo.create_job(
                 "download",

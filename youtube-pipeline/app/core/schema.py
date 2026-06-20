@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS videos (
     duration INTEGER,
     view_count INTEGER,
     category TEXT NOT NULL DEFAULT '',
+    priority INTEGER NOT NULL DEFAULT 100,
+    source_label TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL,
     discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -134,4 +136,12 @@ def init_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE jobs ADD COLUMN next_run_at TEXT")
     if "error_type" not in job_columns:
         conn.execute("ALTER TABLE jobs ADD COLUMN error_type TEXT NOT NULL DEFAULT ''")
+    video_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(videos)").fetchall()
+    }
+    if "priority" not in video_columns:
+        conn.execute("ALTER TABLE videos ADD COLUMN priority INTEGER NOT NULL DEFAULT 100")
+    if "source_label" not in video_columns:
+        conn.execute("ALTER TABLE videos ADD COLUMN source_label TEXT NOT NULL DEFAULT ''")
     conn.commit()

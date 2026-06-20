@@ -114,7 +114,9 @@ class DiscoveryTests(unittest.TestCase):
             self.assertIsNone(repo.get_video("abc123def45"))
 
     def test_discover_inserts_selected_video_and_download_job(self):
-        candidates = [self._candidate()]
+        candidate = self._candidate()
+        candidate = VideoCandidate(**{**candidate.__dict__, "source_name": "source-a", "source_params": {"priority": 7}})
+        candidates = [candidate]
 
         with patch("app.discovery.service.fetch_candidates", return_value=candidates):
             result = discover_videos(self.config, dry_run=False)
@@ -127,6 +129,8 @@ class DiscoveryTests(unittest.TestCase):
             job = repo.get_latest_job("abc123def45", "download")
             self.assertEqual(video["status"], "selected")
             self.assertEqual(video["title"], "Animated short")
+            self.assertEqual(video["priority"], 7)
+            self.assertEqual(video["source_label"], "source-a")
             self.assertEqual(job["status"], "pending")
 
     def test_discover_rejects_duplicate_and_blocked_title(self):
