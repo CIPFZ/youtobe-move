@@ -12,6 +12,7 @@ from app.core.schema import init_schema
 from app.discovery import discover_videos
 from app.download_service import download_next
 from app.publish_service import describe_next, publish_next
+from app.storage import cleanup_media
 
 
 logger = logging.getLogger("youtube-pipeline")
@@ -85,6 +86,7 @@ def run_worker_once(config: Config, enable_publish: bool | None = None, publish_
             "describe_enabled": getattr(config, "worker_enable_describe", True),
             "publish_enabled": publish_enabled,
             "publish_dry_run": dry_run_publish,
+            "storage_cleanup_enabled": getattr(config, "storage_cleanup_enabled", False),
         },
     )
     steps: list[dict[str, Any]] = []
@@ -96,6 +98,7 @@ def run_worker_once(config: Config, enable_publish: bool | None = None, publish_
                 {"step": "download", "ok": True, "result": {"status": "skipped", "reason": "pipeline_disabled"}},
                 {"step": "describe", "ok": True, "result": {"status": "skipped", "reason": "pipeline_disabled"}},
                 {"step": "publish", "ok": True, "result": {"status": "skipped", "reason": "pipeline_disabled"}},
+                {"step": "storage_cleanup", "ok": True, "result": {"status": "skipped", "reason": "pipeline_disabled"}},
             ]
         )
         ok = all(step["ok"] for step in steps)
@@ -141,6 +144,16 @@ def run_worker_once(config: Config, enable_publish: bool | None = None, publish_
                 "step": "publish",
                 "ok": True,
                 "result": {"status": "skipped", "reason": "worker_publish_disabled"},
+            }
+        )
+    if getattr(config, "storage_cleanup_enabled", False):
+        steps.append(_run_step("storage_cleanup", lambda: cleanup_media(config, dry_run=False)))
+    else:
+        steps.append(
+            {
+                "step": "storage_cleanup",
+                "ok": True,
+                "result": {"status": "skipped", "reason": "storage_cleanup_disabled"},
             }
         )
 

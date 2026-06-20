@@ -974,6 +974,10 @@ P9.4 存储监控和清理已完成基础版：
   - 不删除 `videos/jobs/events/publish_records` 等数据库记录。
   - 删除后清空 `media_files` 中对应路径。
   - 写入 `storage_media_cleaned` 事件。
+- worker 集成：
+  - `STORAGE_CLEANUP_ENABLED=false` 时 worker 记录 skipped。
+  - `STORAGE_CLEANUP_ENABLED=true` 时 worker 在 discovery/download/describe/publish 后执行 cleanup。
+  - `PIPELINE_ENABLED=false` 时 cleanup 同样跳过。
 - 新增 Web API：
   - `GET /api/storage`
   - `POST /api/storage/cleanup`
@@ -999,10 +1003,10 @@ P9.4 存储监控和清理已完成基础版：
   - 真实清理删除文件并清空媒体路径。
   - 单视频 dry-run。
   - 单视频非 eligible 状态默认阻断。
+  - worker cleanup 开关。
 
 P9.4 未完成：
 
-- worker 自动触发存储清理。
 - 清理策略更细分，如只清理已发布且发布超过 N 天。
 - 大数据量场景下的 SQL 聚合优化。
 

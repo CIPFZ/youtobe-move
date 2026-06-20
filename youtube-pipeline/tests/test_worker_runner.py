@@ -26,6 +26,7 @@ class WorkerRunnerTests(unittest.TestCase):
             worker_publish_dry_run=True,
             worker_interval_seconds=1,
             job_lease_seconds=1800,
+            storage_cleanup_enabled=False,
         )
         self.addCleanup(self.temp_dir.cleanup)
 
@@ -45,8 +46,9 @@ class WorkerRunnerTests(unittest.TestCase):
             result = run_worker_once(self.config)
 
         self.assertEqual(result["status"], "ok")
-        self.assertEqual([step["step"] for step in result["steps"]], ["recover", "discovery", "download", "describe", "publish"])
+        self.assertEqual([step["step"] for step in result["steps"]], ["recover", "discovery", "download", "describe", "publish", "storage_cleanup"])
         self.assertEqual(result["steps"][4]["result"]["reason"], "worker_publish_disabled")
+        self.assertEqual(result["steps"][5]["result"]["reason"], "storage_cleanup_disabled")
         publish_next.assert_not_called()
         event_types = [event["event_type"] for event in self._events()]
         self.assertIn("worker_run_started", event_types)
@@ -114,7 +116,7 @@ class WorkerRunnerTests(unittest.TestCase):
             result = run_worker_once(self.config, enable_publish=True)
 
         self.assertEqual(result["status"], "ok")
-        self.assertEqual([step["result"]["reason"] for step in result["steps"][1:]], ["pipeline_disabled"] * 4)
+        self.assertEqual([step["result"]["reason"] for step in result["steps"][1:]], ["pipeline_disabled"] * 5)
         discover_videos.assert_not_called()
         download_next.assert_not_called()
         describe_next.assert_not_called()
@@ -134,6 +136,20 @@ class WorkerRunnerTests(unittest.TestCase):
         self.assertEqual(result["steps"][3]["result"]["reason"], "worker_describe_disabled")
         download_next.assert_not_called()
         describe_next.assert_not_called()
+
+    def test_run_worker_once_runs_storage_cleanup_when_enabled(self):
+        self.config.storage_cleanup_enabled = True
+        with (
+            patch("app.worker.runner.discover_videos", return_value={"inserted_count": 0, "accepted_count": 0}),
+            patch("app.worker.runner.download_next", return_value={"status": "empty"}),
+            patch("app.worker.runner.describe_next", return_value={"status": "empty"}),
+            patch("app.worker.runner.cleanup_media", return_value={"status": "cleaned", "count": 1}) as cleanup_media,
+        ):
+            result = run_worker_once(self.config)
+
+        self.assertEqual(result["steps"][-1]["step"], "storage_cleanup")
+        self.assertEqual(result["steps"][-1]["result"]["status"], "cleaned")
+        cleanup_media.assert_called_once_with(self.config, dry_run=False)
 
 
 if __name__ == "__main__":
