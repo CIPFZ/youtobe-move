@@ -5,6 +5,7 @@ import { usePipelineDashboard } from "./hooks/usePipelineDashboard";
 import { ConfigSection } from "./sections/ConfigSection";
 import { DetailSection } from "./sections/DetailSection";
 import { DiscoverySection } from "./sections/DiscoverySection";
+import { EventsSection } from "./sections/EventsSection";
 import { OverviewSection } from "./sections/OverviewSection";
 import { QueueSection } from "./sections/QueueSection";
 import { StorageSection } from "./sections/StorageSection";
@@ -52,6 +53,7 @@ function App() {
         <a href="#config">配置</a>
         <a href="#storage">存储</a>
         <a href="#discovery">发现源</a>
+        <a href="#events">事件</a>
       </nav>
 
       <main>
@@ -62,6 +64,7 @@ function App() {
         <ConfigSection state={state} actions={actions} />
         <StorageSection state={state} actions={actions} />
         <DiscoverySection state={state} actions={actions} />
+        <EventsSection state={state} actions={actions} />
       </main>
 
       {toast ? <div className="toast show">{toast}</div> : null}

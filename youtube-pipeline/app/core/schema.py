@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_video_id_created_at ON events(video_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_events_module_id ON events(module, id);
 """
 
 

@@ -1118,10 +1118,18 @@ P9.6 Web 页面重构已完成基础版：
   - 展示最近 worker 事件。
   - 可从该区手动运行一轮 worker。
 - `/api/status.settings` 已补充 Worker 管理区需要的运行参数。
+- 新增事件管理区：
+  - 新增 `GET /api/events`。
+  - 支持按 `module` 筛选。
+  - 支持 `limit` 和 `offset` 分页。
+  - 页面可切换模块、调整页大小、上一页/下一页。
+  - 事件列表展示 event_type、module、created_at、message、video_id、job_id。
+- `Repository.list_events()` 已支持 module/offset 参数。
+- `events` 表已补充 `module,id` 查询索引。
 
 P9.6 未完成：
 
-- 事件/失败记录的分页和更丰富筛选。
+- 失败记录的独立分页视图和更丰富筛选。
 
 ### 风险点
 

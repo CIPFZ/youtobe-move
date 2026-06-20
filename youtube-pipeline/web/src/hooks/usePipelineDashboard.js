@@ -11,6 +11,8 @@ export function usePipelineDashboard(showToast) {
   const [storage, setStorage] = useState(null);
   const [discoverySources, setDiscoverySources] = useState([]);
   const [sourcePreview, setSourcePreview] = useState(null);
+  const [events, setEvents] = useState(null);
+  const [eventFilters, setEventFilters] = useState({ module: "", limit: 30, offset: 0 });
   const [filters, setFilters] = useState({ status: "", draftStatus: "", errorType: "" });
   const [selectedVideoIds, setSelectedVideoIds] = useState([]);
   const [addUrls, setAddUrls] = useState("");
@@ -30,6 +32,15 @@ export function usePipelineDashboard(showToast) {
   async function loadDiscoverySources() {
     const payload = await api("/api/discovery/sources");
     setDiscoverySources(payload.sources || []);
+  }
+
+  async function loadEvents(nextFilters = eventFilters) {
+    const params = new URLSearchParams({
+      limit: String(nextFilters.limit || 30),
+      offset: String(nextFilters.offset || 0),
+    });
+    if (nextFilters.module) params.set("module", nextFilters.module);
+    setEvents(await api(`/api/events?${params.toString()}`));
   }
 
   async function selectVideo(videoId) {
@@ -64,7 +75,7 @@ export function usePipelineDashboard(showToast) {
   async function refreshAll() {
     setLoading(true);
     try {
-      await Promise.all([loadAll(), loadConfig(), loadStorage(), loadDiscoverySources()]);
+      await Promise.all([loadAll(), loadConfig(), loadStorage(), loadDiscoverySources(), loadEvents()]);
     } catch (error) {
       showToast(error.message);
     } finally {
@@ -90,6 +101,14 @@ export function usePipelineDashboard(showToast) {
       published: { status: "published", draftStatus: "", errorType: "" },
     };
     updateFilters(presets[preset] || presets.all);
+  }
+
+  function updateEventFilters(updater) {
+    setEventFilters((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      loadEvents(next).catch((error) => showToast(error.message));
+      return next;
+    });
   }
 
   async function runVideoAction(videoId, action) {
@@ -274,6 +293,8 @@ export function usePipelineDashboard(showToast) {
       storage,
       discoverySources,
       sourcePreview,
+      events,
+      eventFilters,
       filters,
       selectedVideoIds,
       addUrls,
@@ -287,11 +308,13 @@ export function usePipelineDashboard(showToast) {
       setAddSourceLabel,
       setSelectedVideoIds,
       updateFilters,
+      updateEventFilters,
       applyQueuePreset,
       loadAll,
       loadConfig,
       loadStorage,
       loadDiscoverySources,
+      loadEvents,
       refreshAll,
       selectVideo,
       runVideoAction,

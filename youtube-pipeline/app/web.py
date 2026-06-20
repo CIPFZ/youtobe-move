@@ -166,6 +166,25 @@ def _status_settings(config: Config) -> dict[str, Any]:
     }
 
 
+def _list_events(config: Config, query: dict[str, list[str]]) -> dict[str, Any]:
+    limit = _parse_int((query.get("limit") or [""])[0], 50, minimum=1, maximum=200)
+    offset = _parse_int((query.get("offset") or [""])[0], 0, minimum=0, maximum=100000)
+    module = (query.get("module") or [""])[0].strip() or None
+    video_id = (query.get("video_id") or [""])[0].strip() or None
+    with connect(config.db_path) as conn:
+        init_schema(conn)
+        repo = Repository(conn)
+        events = repo.list_events(video_id=video_id, module=module, limit=limit, offset=offset)
+    return {
+        "events": events,
+        "limit": limit,
+        "offset": offset,
+        "module": module,
+        "video_id": video_id,
+        "has_more": len(events) == limit,
+    }
+
+
 def _media_file_response(config: Config, video_id: str, file_type: str) -> tuple[Path, str]:
     media_files = _video_detail(config, video_id)["media_files"]
     if not media_files:
@@ -303,6 +322,10 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
 
         if method == "GET" and path == "/api/config":
             self._send_json(list_config(self.config.base_dir))
+            return
+
+        if method == "GET" and path == "/api/events":
+            self._send_json(_list_events(self.config, query))
             return
 
         if method == "GET" and path == "/api/storage":

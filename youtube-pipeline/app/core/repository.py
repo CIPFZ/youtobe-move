@@ -905,12 +905,31 @@ class Repository:
             (video_id, job_id, module, event_type, message, json.dumps(payload or {}, ensure_ascii=False)),
         )
 
-    def list_events(self, video_id: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
-        if video_id:
+    def list_events(
+        self,
+        video_id: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        module: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if video_id and module:
             rows = self.conn.execute(
-                "SELECT * FROM events WHERE video_id=? ORDER BY id DESC LIMIT ?",
-                (video_id, limit),
+                "SELECT * FROM events WHERE video_id=? AND module=? ORDER BY id DESC LIMIT ? OFFSET ?",
+                (video_id, module, limit, offset),
+            ).fetchall()
+        elif video_id:
+            rows = self.conn.execute(
+                "SELECT * FROM events WHERE video_id=? ORDER BY id DESC LIMIT ? OFFSET ?",
+                (video_id, limit, offset),
+            ).fetchall()
+        elif module:
+            rows = self.conn.execute(
+                "SELECT * FROM events WHERE module=? ORDER BY id DESC LIMIT ? OFFSET ?",
+                (module, limit, offset),
             ).fetchall()
         else:
-            rows = self.conn.execute("SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            rows = self.conn.execute(
+                "SELECT * FROM events ORDER BY id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
         return [dict(row) for row in rows]

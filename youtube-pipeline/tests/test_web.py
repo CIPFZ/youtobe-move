@@ -8,7 +8,7 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.publish_service import update_publish_draft
-from app.web import WebError, _handle_action, _handle_batch_action, _list_videos, _status_settings
+from app.web import WebError, _handle_action, _handle_batch_action, _list_events, _list_videos, _status_settings
 
 
 class WebTests(unittest.TestCase):
@@ -72,6 +72,21 @@ class WebTests(unittest.TestCase):
 
         self.assertEqual(len(matched["videos"]), 1)
         self.assertEqual(len(missed["videos"]), 0)
+
+    def test_list_events_filters_by_module_and_paginates(self):
+        self.repo.upsert_video("abc123def45", "https://www.youtube.com/watch?v=abc123def45")
+        self.repo.create_event("abc123def45", None, "worker", "worker_run_started", "started")
+        self.repo.create_event("abc123def45", None, "core", "video_status_changed", "changed")
+        self.repo.create_event("abc123def45", None, "worker", "worker_run_finished", "finished")
+        self.conn.commit()
+
+        first_page = _list_events(self.config, {"module": ["worker"], "limit": ["1"], "offset": ["0"]})
+        second_page = _list_events(self.config, {"module": ["worker"], "limit": ["1"], "offset": ["1"]})
+
+        self.assertEqual(first_page["events"][0]["event_type"], "worker_run_finished")
+        self.assertTrue(first_page["has_more"])
+        self.assertEqual(second_page["events"][0]["event_type"], "worker_run_started")
+        self.assertEqual(second_page["module"], "worker")
 
     def test_real_publish_requires_confirm(self):
         with self.assertRaises(WebError) as ctx:

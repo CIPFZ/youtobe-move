@@ -1271,6 +1271,58 @@ textarea {
   border-bottom: 0;
 }
 
+.events-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-alt);
+}
+
+.event-table {
+  display: grid;
+}
+
+.event-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1.4fr) minmax(120px, 0.5fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.event-row:last-child {
+  border-bottom: 0;
+}
+
+.event-row div,
+.event-row p,
+.event-row small {
+  min-width: 0;
+}
+
+.event-row div {
+  display: grid;
+  gap: 3px;
+}
+
+.event-row span,
+.event-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.event-row p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .toast {
   position: fixed;
   right: 18px;
@@ -1330,5 +1382,10 @@ textarea {
   .config-grid,
   .worker-grid {
     grid-template-columns: 1fr;
+  }
+
+  .event-row {
+    grid-template-columns: 1fr;
+    gap: 5px;
   }
 }
