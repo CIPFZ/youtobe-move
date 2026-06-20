@@ -59,6 +59,7 @@ class Config:
         self.storage_warn_gb = float(os.environ["STORAGE_WARN_GB"])
         self.storage_min_free_gb = float(os.environ["STORAGE_MIN_FREE_GB"])
         self.storage_retention_days = int(os.environ["STORAGE_RETENTION_DAYS"])
+        self.storage_published_retention_days = int(os.environ["STORAGE_PUBLISHED_RETENTION_DAYS"])
         self.storage_cleanup_enabled = os.environ["STORAGE_CLEANUP_ENABLED"].strip().lower() in {"1", "true", "yes", "on"}
         self.storage_cleanup_statuses = os.environ["STORAGE_CLEANUP_STATUSES"]
         self.web_host = os.environ["WEB_HOST"]

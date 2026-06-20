@@ -151,7 +151,8 @@ def _cleanup_candidates(config: Config) -> list[dict[str, Any]]:
     output_dir = config.resolve_path(str(config.output_dir)).resolve()
     statuses = _parse_statuses(config.storage_cleanup_statuses)
     retention_days = int(config.storage_retention_days)
-    cutoff = datetime.now() - timedelta(days=retention_days) if retention_days > 0 else None
+    published_retention_days = int(getattr(config, "storage_published_retention_days", 0) or 0)
+    general_cutoff = datetime.now() - timedelta(days=retention_days) if retention_days > 0 else None
     candidates: list[dict[str, Any]] = []
     with connect(config.db_path) as conn:
         init_schema(conn)
@@ -161,8 +162,23 @@ def _cleanup_candidates(config: Config) -> list[dict[str, Any]]:
             status = str(video["status"])
             if status not in statuses:
                 continue
-            updated_at = _parse_db_datetime(str(video.get("updated_at") or ""))
-            if cutoff and updated_at and updated_at > cutoff:
+            updated_at_raw = str(video.get("updated_at") or "")
+            reference_at_raw = updated_at_raw
+            reference_at = _parse_db_datetime(updated_at_raw)
+            cleanup_reason = "video_updated_at"
+            retention_for_video = retention_days
+            cutoff = general_cutoff
+            if status == "published" and published_retention_days > 0:
+                retention_for_video = published_retention_days
+                publish_record = repo.get_latest_publish_record_for_video(video_id)
+                if publish_record:
+                    reference_at_raw = str(publish_record.get("published_at") or publish_record.get("created_at") or "")
+                    reference_at = _parse_db_datetime(reference_at_raw)
+                    cleanup_reason = "published_at"
+                else:
+                    cleanup_reason = "published_video_updated_at"
+                cutoff = datetime.now() - timedelta(days=published_retention_days)
+            if cutoff and reference_at and reference_at > cutoff:
                 continue
             paths = [
                 item
@@ -178,6 +194,9 @@ def _cleanup_candidates(config: Config) -> list[dict[str, Any]]:
                     "status": status,
                     "title": str(video.get("title") or ""),
                     "updated_at": str(video.get("updated_at") or ""),
+                    "cleanup_reference_at": reference_at_raw,
+                    "cleanup_reason": cleanup_reason,
+                    "retention_days": retention_for_video,
                     "size_bytes": size,
                     "size_gb": _bytes_to_gb(size),
                     "paths": paths,

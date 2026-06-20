@@ -17,6 +17,7 @@ class TestConfig:
         self.storage_warn_gb = 0
         self.storage_min_free_gb = 0
         self.storage_retention_days = 0
+        self.storage_published_retention_days = 0
         self.storage_cleanup_enabled = False
         self.storage_cleanup_statuses = "published,skipped,failed"
 
@@ -64,6 +65,39 @@ class StorageTests(unittest.TestCase):
         self.assertGreater(status["total_size_bytes"], 0)
         self.assertEqual(status["cleanup_preview"]["count"], 1)
         self.assertEqual(status["by_status"][0]["status"], "published")
+
+    def test_published_retention_uses_publish_record_time(self):
+        self.config.storage_published_retention_days = 7
+        self._published_video_with_files()
+        self.repo.save_publish_record(
+            "abc123def45",
+            platform="bilibili",
+            account="test",
+            status="published",
+            published_at="2099-01-01T00:00:00+00:00",
+        )
+
+        status = get_storage_status(self.config)
+
+        self.assertEqual(status["cleanup_preview"]["count"], 0)
+
+    def test_old_published_record_becomes_cleanup_candidate(self):
+        self.config.storage_published_retention_days = 7
+        self._published_video_with_files()
+        self.repo.save_publish_record(
+            "abc123def45",
+            platform="bilibili",
+            account="test",
+            status="published",
+            published_at="2000-01-01T00:00:00+00:00",
+        )
+
+        status = get_storage_status(self.config)
+        item = status["cleanup_preview"]["items"][0]
+
+        self.assertEqual(status["cleanup_preview"]["count"], 1)
+        self.assertEqual(item["cleanup_reason"], "published_at")
+        self.assertEqual(item["retention_days"], 7)
 
     def test_cleanup_media_dry_run_keeps_files(self):
         merged = self._published_video_with_files()

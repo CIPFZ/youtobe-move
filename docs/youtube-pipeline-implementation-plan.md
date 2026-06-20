@@ -978,6 +978,7 @@ P9.4 存储监控和清理已完成基础版：
   - `STORAGE_WARN_GB`
   - `STORAGE_MIN_FREE_GB`
   - `STORAGE_RETENTION_DAYS`
+  - `STORAGE_PUBLISHED_RETENTION_DAYS`
   - `STORAGE_CLEANUP_ENABLED`
   - `STORAGE_CLEANUP_STATUSES`
 - 新增 `app/storage.py`：
@@ -990,6 +991,8 @@ P9.4 存储监控和清理已完成基础版：
 - 清理策略：
   - 只删除 `OUTPUT_DIR` 内存在的媒体文件。
   - 默认候选状态为 `published,skipped,failed`。
+  - `published` 状态可按最新成功发布记录时间额外保留 `STORAGE_PUBLISHED_RETENTION_DAYS` 天。
+  - 没有成功发布记录时，`published` 状态回退使用视频更新时间判断。
   - 不删除 `videos/jobs/events/publish_records` 等数据库记录。
   - 删除后清空 `media_files` 中对应路径。
   - 写入 `storage_media_cleaned` 事件。
@@ -1022,11 +1025,11 @@ P9.4 存储监控和清理已完成基础版：
   - 真实清理删除文件并清空媒体路径。
   - 单视频 dry-run。
   - 单视频非 eligible 状态默认阻断。
+  - 已发布视频按发布记录时间计算保留期。
   - worker cleanup 开关。
 
 P9.4 未完成：
 
-- 清理策略更细分，如只清理已发布且发布超过 N 天。
 - 大数据量场景下的 SQL 聚合优化。
 
 P9.5 发现源管理已完成基础版：

@@ -603,6 +603,18 @@ class Repository:
         ).fetchone()
         return row_to_dict(row)
 
+    def get_latest_publish_record_for_video(self, video_id: str, status: str = "published") -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT * FROM publish_records
+            WHERE video_id=? AND status=?
+            ORDER BY datetime(COALESCE(published_at, created_at)) DESC, id DESC
+            LIMIT 1
+            """,
+            (video_id, status),
+        ).fetchone()
+        return row_to_dict(row)
+
     def list_publish_records(self, video_id: str, platform: str | None = None) -> list[dict[str, Any]]:
         if platform:
             rows = self.conn.execute(
