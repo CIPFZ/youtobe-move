@@ -300,6 +300,81 @@ main {
   border-bottom: 0;
 }
 
+.section-headline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cleanup-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cleanup-item {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.cleanup-item summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.cleanup-item summary span {
+  min-width: 0;
+}
+
+.cleanup-item summary b,
+.cleanup-item summary small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cleanup-item summary small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cleanup-paths {
+  display: grid;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+.cleanup-path {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px;
+  border-radius: 6px;
+  background: var(--panel-alt);
+  font-size: 12px;
+}
+
+.cleanup-path span {
+  color: var(--muted);
+}
+
+.cleanup-path code {
+  min-width: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .muted,
 .stat span {
   color: var(--muted);

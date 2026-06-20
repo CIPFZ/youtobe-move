@@ -31,15 +31,42 @@ export function StoragePanel({ storage }) {
           )) : <div className="muted">暂无媒体文件。</div>}
         </section>
         <section className="section">
-          <h2>清理候选</h2>
-          {(preview.items || []).length ? preview.items.slice(0, 12).map((item) => (
-            <div className="storage-row" key={item.video_id}>
-              <span>{item.video_id} · {item.status}</span>
-              <b>{fmtBytes(item.size_bytes)}</b>
-            </div>
-          )) : <div className="muted">暂无可清理内容。</div>}
+          <div className="section-headline">
+            <h2>清理候选</h2>
+            <span className="muted">共 {preview.count || 0} 项，预计释放 {fmtBytes(preview.size_bytes)}</span>
+          </div>
+          <CleanupCandidates items={preview.items || []} />
         </section>
       </div>
+    </div>
+  );
+}
+
+function CleanupCandidates({ items }) {
+  if (!items.length) return <div className="muted">暂无可清理内容。</div>;
+  return (
+    <div className="cleanup-list">
+      {items.slice(0, 20).map((item) => (
+        <details className="cleanup-item" key={item.video_id}>
+          <summary>
+            <span>
+              <b>{item.title || item.video_id}</b>
+              <small>{item.video_id} · {item.status} · {item.updated_at || "-"}</small>
+            </span>
+            <strong>{fmtBytes(item.size_bytes)}</strong>
+          </summary>
+          <div className="cleanup-paths">
+            {(item.paths || []).map((path) => (
+              <div className="cleanup-path" key={`${item.video_id}-${path.field}`}>
+                <span>{path.field}</span>
+                <code>{path.path}</code>
+                <b>{fmtBytes(path.size_bytes)}</b>
+              </div>
+            ))}
+          </div>
+        </details>
+      ))}
+      {items.length > 20 ? <div className="muted">仅展示前 20 项。</div> : null}
     </div>
   );
 }
