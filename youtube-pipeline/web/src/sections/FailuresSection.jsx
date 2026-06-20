@@ -1,3 +1,4 @@
+import { Button, Select, Space } from "antd";
 import { RefreshCw, RotateCcw } from "lucide-react";
 import { errorOptions } from "../constants";
 import { IconButton } from "../components/IconButton";
@@ -15,33 +16,26 @@ export function FailuresSection({ state, actions }) {
     <section className="panel wide" id="failures">
       <div className="panel-head">
         <h2>失败</h2>
-        <div className="toolbar">
-          <select value={failureFilters.jobType} onChange={(event) => updateFailureFilters((prev) => ({ ...prev, jobType: event.target.value, offset: 0 }))}>
-            {jobTypes.map((item) => <option value={item} key={item || "all"}>{item || "全部任务"}</option>)}
-          </select>
-          <select value={failureFilters.errorType} onChange={(event) => updateFailureFilters((prev) => ({ ...prev, errorType: event.target.value, offset: 0 }))}>
-            <option value="">全部错误</option>
-            {errorOptions.map((item) => <option value={item} key={item}>{item}</option>)}
-          </select>
-          <select value={failureFilters.limit} onChange={(event) => updateFailureFilters((prev) => ({ ...prev, limit: Number(event.target.value), offset: 0 }))}>
-            {[20, 30, 50, 100].map((item) => <option value={item} key={item}>{item} 条</option>)}
-          </select>
+        <Space wrap>
+          <Select value={failureFilters.jobType} style={{ width: 132 }} onChange={(value) => updateFailureFilters((prev) => ({ ...prev, jobType: value, offset: 0 }))} options={jobTypes.map((item) => ({ value: item, label: item || "全部任务" }))} />
+          <Select value={failureFilters.errorType} style={{ width: 132 }} onChange={(value) => updateFailureFilters((prev) => ({ ...prev, errorType: value, offset: 0 }))} options={[{ value: "", label: "全部错误" }, ...errorOptions.map((item) => ({ value: item, label: item }))]} />
+          <Select value={failureFilters.limit} style={{ width: 100 }} onChange={(value) => updateFailureFilters((prev) => ({ ...prev, limit: Number(value), offset: 0 }))} options={[20, 30, 50, 100].map((item) => ({ value: item, label: `${item} 条` }))} />
           <IconButton icon={RefreshCw} onClick={() => loadFailures(failureFilters)}>刷新</IconButton>
-        </div>
+        </Space>
       </div>
       <div className="events-toolbar">
-        <button disabled={offset <= 0} onClick={() => updateFailureFilters((prev) => ({ ...prev, offset: Math.max(0, offset - limit) }))}>上一页</button>
+        <Button disabled={offset <= 0} onClick={() => updateFailureFilters((prev) => ({ ...prev, offset: Math.max(0, offset - limit) }))}>上一页</Button>
         <span className="muted">offset {offset} · 当前 {rows.length} 条</span>
-        <button disabled={!failures?.has_more} onClick={() => updateFailureFilters((prev) => ({ ...prev, offset: offset + limit }))}>下一页</button>
+        <Button disabled={!failures?.has_more} onClick={() => updateFailureFilters((prev) => ({ ...prev, offset: offset + limit }))}>下一页</Button>
       </div>
       {rows.length ? (
         <div className="failure-table">
           {rows.map((row) => (
             <div className={`failure-row${selectedId === row.video_id ? " active" : ""}`} key={row.video_id}>
-              <button onClick={() => selectVideo(row.video_id)}>
+              <Button type="text" onClick={() => selectVideo(row.video_id)}>
                 <b>{row.title || row.video_id}</b>
                 <span>{row.video_id} · {row.channel || "-"}</span>
-              </button>
+              </Button>
               <div>
                 <span className="badge failed">{row.job_error_type || "unknown"}</span>
                 <span className="badge">{row.job_type || "-"}</span>

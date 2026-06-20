@@ -1,8 +1,12 @@
-export function IconButton({ icon: Icon, children, ...props }) {
+import { Button } from "antd";
+
+export function IconButton({ icon: Icon, children, className = "", ...props }) {
+  const type = className.includes("primary") ? "primary" : "default";
+  const danger = className.includes("danger");
+
   return (
-    <button {...props}>
-      {Icon ? <Icon size={16} /> : null}
-      <span>{children}</span>
-    </button>
+    <Button {...props} type={type} danger={danger} icon={Icon ? <Icon size={16} /> : null}>
+      {children}
+    </Button>
   );
 }

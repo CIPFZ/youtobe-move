@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { api } from "../api";
 import { flattenConfig } from "../format";
 
-export function usePipelineDashboard(showToast) {
+export function usePipelineDashboard(showToast, confirmAction = async () => true) {
   const [status, setStatus] = useState(null);
   const [videos, setVideos] = useState([]);
   const [selectedId, setSelectedId] = useState("");
@@ -25,6 +25,10 @@ export function usePipelineDashboard(showToast) {
   const [loading, setLoading] = useState(false);
 
   const configByKey = useMemo(() => flattenConfig(config), [config]);
+  async function loadStatus() {
+    setStatus(await api("/api/status?events_limit=5"));
+  }
+
   async function loadConfig() {
     setConfig(await api("/api/config"));
   }
@@ -78,12 +82,8 @@ export function usePipelineDashboard(showToast) {
     if (nextFilters.status) params.set("status", nextFilters.status);
     if (nextFilters.draftStatus) params.set("draft_status", nextFilters.draftStatus);
     if (nextFilters.errorType) params.set("error_type", nextFilters.errorType);
-    const [statusPayload, listPayload] = await Promise.all([
-      api("/api/status?events_limit=5"),
-      api(`/api/videos?${params.toString()}`),
-    ]);
+    const listPayload = await api(`/api/videos?${params.toString()}`);
     const nextVideos = listPayload.videos || [];
-    setStatus(statusPayload);
     setVideos(nextVideos);
     setSelectedVideoIds((prev) => {
       const visibleIds = new Set(nextVideos.map((item) => item.video.video_id));
@@ -100,7 +100,62 @@ export function usePipelineDashboard(showToast) {
   async function refreshAll() {
     setLoading(true);
     try {
-      await Promise.all([loadAll(), loadConfig(), loadStorage(), loadDiscoverySources(), loadEvents(), loadFailures(), loadJobs()]);
+      await Promise.all([loadStatus(), loadAll(), loadConfig(), loadStorage(), loadDiscoverySources(), loadEvents(), loadFailures(), loadJobs()]);
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadDashboard() {
+    setLoading(true);
+    try {
+      await Promise.all([loadStatus(), loadStorage()]);
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadVideosPage(keepSelected = selectedId) {
+    setLoading(true);
+    try {
+      await Promise.all([loadStatus(), loadAll(keepSelected)]);
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadDiscoveryPage() {
+    setLoading(true);
+    try {
+      await loadDiscoverySources();
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadOperationsPage() {
+    setLoading(true);
+    try {
+      await Promise.all([loadStatus(), loadFailures(), loadJobs(), loadEvents()]);
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadSettingsPage() {
+    setLoading(true);
+    try {
+      await Promise.all([loadConfig(), loadStorage()]);
     } catch (error) {
       showToast(error.message);
     } finally {
@@ -155,12 +210,12 @@ export function usePipelineDashboard(showToast) {
   async function runVideoAction(videoId, action) {
     const body = {};
     if (action === "publish") {
-      if (!window.confirm("确认真实发布到 B 站？")) return;
+      if (!(await confirmAction("确认真实发布到 B 站？"))) return;
       body.confirm = true;
     }
-    if (action === "skip" && !window.confirm("确认跳过该视频？")) return;
+    if (action === "skip" && !(await confirmAction("确认跳过该视频？"))) return;
     if (action === "cleanup-media") {
-      if (!window.confirm("确认清理该视频的媒体文件？数据库记录会保留。")) return;
+      if (!(await confirmAction("确认清理该视频的媒体文件？数据库记录会保留。"))) return;
       body.confirm = true;
       body.dry_run = false;
     }
@@ -247,8 +302,8 @@ export function usePipelineDashboard(showToast) {
       showToast("请先选择视频。");
       return;
     }
-    if (action === "reject" && !window.confirm(`确认拒绝 ${selectedVideoIds.length} 个草稿？`)) return;
-    if (action === "skip" && !window.confirm(`确认跳过 ${selectedVideoIds.length} 个视频？`)) return;
+    if (action === "reject" && !(await confirmAction(`确认拒绝 ${selectedVideoIds.length} 个草稿？`))) return;
+    if (action === "skip" && !(await confirmAction(`确认跳过 ${selectedVideoIds.length} 个视频？`))) return;
     try {
       const result = await api("/api/videos/batch", {
         method: "POST",
@@ -267,7 +322,7 @@ export function usePipelineDashboard(showToast) {
   }
 
   async function runStorageCleanup(dryRun) {
-    if (!dryRun && !window.confirm("确认清理符合条件的媒体文件？数据库记录会保留。")) return;
+    if (!dryRun && !(await confirmAction("确认清理符合条件的媒体文件？数据库记录会保留。"))) return;
     try {
       const result = await api("/api/storage/cleanup", {
         method: "POST",
@@ -296,7 +351,7 @@ export function usePipelineDashboard(showToast) {
   }
 
   async function deleteDiscoverySource(index) {
-    if (!window.confirm("确认删除该发现源？")) return;
+    if (!(await confirmAction("确认删除该发现源？"))) return;
     try {
       const result = await api(`/api/discovery/sources/${index}`, { method: "DELETE", body: "{}" });
       setDiscoverySources(result.sources || []);
@@ -358,6 +413,12 @@ export function usePipelineDashboard(showToast) {
       updateFailureFilters,
       updateJobFilters,
       applyQueuePreset,
+      loadStatus,
+      loadDashboard,
+      loadVideosPage,
+      loadDiscoveryPage,
+      loadOperationsPage,
+      loadSettingsPage,
       loadAll,
       loadConfig,
       loadStorage,

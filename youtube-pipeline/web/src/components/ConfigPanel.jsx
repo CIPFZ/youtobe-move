@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { Input, Select } from "antd";
+
 const groupLabels = {
   pipeline: "自动流程",
   publish: "发布策略",
@@ -125,6 +128,7 @@ function ConfigSummary({ configByKey }) {
 function ConfigField({ field }) {
   const key = field.key;
   const value = field.value ?? "";
+  const [selectValue, setSelectValue] = useConfigSelectValue(value, field.type);
   const commonProps = {
     id: `cfg_${key}`,
     "data-config-key": key,
@@ -139,21 +143,32 @@ function ConfigField({ field }) {
       </label>
       {fieldDescriptions[key] ? <small>{fieldDescriptions[key]}</small> : null}
       {field.type === "bool" ? (
-        <select {...commonProps} defaultValue={value ? "true" : "false"}>
-          <option value="true">true</option>
-          <option value="false">false</option>
-        </select>
+        <>
+          <Select value={selectValue} disabled={field.editable === false} onChange={setSelectValue} options={[{ value: "true", label: "true" }, { value: "false", label: "false" }]} />
+          <input {...commonProps} type="hidden" value={selectValue} readOnly />
+        </>
       ) : field.choices?.length ? (
-        <select {...commonProps} defaultValue={String(value)}>
-          {field.choices.map((choice) => <option value={choice} key={choice}>{choice || "(empty)"}</option>)}
-        </select>
+        <>
+          <Select value={selectValue} disabled={field.editable === false} onChange={setSelectValue} options={field.choices.map((choice) => ({ value: choice, label: choice || "(empty)" }))} />
+          <input {...commonProps} type="hidden" value={selectValue} readOnly />
+        </>
       ) : field.type === "json" ? (
-        <textarea {...commonProps} defaultValue={formatConfigValue(value)} rows={5} />
+        <Input.TextArea {...commonProps} defaultValue={formatConfigValue(value)} rows={5} />
       ) : (
-        <input {...commonProps} defaultValue={formatConfigValue(value)} />
+        <Input {...commonProps} defaultValue={formatConfigValue(value)} />
       )}
     </div>
   );
+}
+
+function useConfigSelectValue(value, type) {
+  const initial = type === "bool" ? (value ? "true" : "false") : String(value ?? "");
+  const state = useState(initial);
+  const [, setSelected] = state;
+  useEffect(() => {
+    setSelected(initial);
+  }, [initial]);
+  return state;
 }
 
 function formatConfigValue(value) {

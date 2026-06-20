@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Input, Select, Space } from "antd";
 import { Check, Download, Eye, FileText, HardDrive, RotateCcw, Save, Send, SkipForward, X } from "lucide-react";
 import { api } from "../api";
 import { draftOptions } from "../constants";
@@ -89,7 +90,7 @@ export function VideoDetail({ data, configByKey, draftRules, onAction, onSaved, 
             <div>原链接</div><div><a href={video.source_url} target="_blank" rel="noreferrer">{video.source_url}</a></div>
           </div>
           {video.last_error ? <p className="badge failed">{video.last_error}</p> : null}
-          <div className="actions">
+          <Space className="actions" wrap>
             <IconButton icon={Download} disabled={!canDownload} onClick={() => onAction(video.video_id, "download")}>下载</IconButton>
             <IconButton icon={FileText} disabled={!canDescribe} onClick={() => onAction(video.video_id, "describe")}>生成文案</IconButton>
             <IconButton icon={Check} disabled={!canReview || draft.status === "approved"} onClick={() => onAction(video.video_id, "approve")}>通过</IconButton>
@@ -99,7 +100,7 @@ export function VideoDetail({ data, configByKey, draftRules, onAction, onSaved, 
             <IconButton icon={RotateCcw} disabled={!canRetry} onClick={() => onAction(video.video_id, "retry")}>重试</IconButton>
             <IconButton icon={SkipForward} className="danger" disabled={!canSkip} onClick={() => onAction(video.video_id, "skip")}>跳过</IconButton>
             <IconButton icon={HardDrive} className="danger" disabled={!canCleanupMedia} onClick={() => onAction(video.video_id, "cleanup-media")}>清理媒体</IconButton>
-          </div>
+          </Space>
         </section>
 
         <section className="section">
@@ -110,40 +111,40 @@ export function VideoDetail({ data, configByKey, draftRules, onAction, onSaved, 
               <div className="draft-form">
                 <label>
                   <span>标题 <em>{draftForm.title.length}/{rules.title_max_length}</em></span>
-                  <input value={draftForm.title} onChange={(event) => updateDraftField("title", event.target.value)} maxLength={rules.title_max_length} />
+                  <Input value={draftForm.title} onChange={(event) => updateDraftField("title", event.target.value)} maxLength={rules.title_max_length} />
                 </label>
                 <label>
                   <span>描述 <em>{draftForm.description.length}/{rules.description_max_length}</em></span>
-                  <textarea value={draftForm.description} onChange={(event) => updateDraftField("description", event.target.value)} rows={7} />
+                  <Input.TextArea value={draftForm.description} onChange={(event) => updateDraftField("description", event.target.value)} rows={7} />
                 </label>
                 <label>
                   <span>标签 <em>{parsedDraftTags.length}/{rules.tag_max_count}</em></span>
-                  <input value={draftForm.tags} onChange={(event) => updateDraftField("tags", event.target.value)} placeholder="使用逗号分隔" />
+                  <Input value={draftForm.tags} onChange={(event) => updateDraftField("tags", event.target.value)} placeholder="使用逗号分隔" />
                   <small>最多 {rules.tag_max_count} 个，每个不超过 {rules.tag_max_length} 个字符。当前最长 {longestTagLength(parsedDraftTags)} 个字符。</small>
                 </label>
                 <div className="draft-row">
                   <label>
                     <span>分区</span>
-                    <select value={draftForm.tid} onChange={(event) => updateDraftField("tid", event.target.value)}>
-                      <option value="">请选择</option>
-                      {tidOptions.map((item) => <option value={item.tid} key={item.tid}>{item.tid} {item.label}</option>)}
-                      {!tidOptions.some((item) => item.tid === String(draft.tid || "")) && draft.tid ? (
-                        <option value={String(draft.tid)}>{draft.tid} {draft.tid_label || ""}</option>
-                      ) : null}
-                    </select>
+                    <Select
+                      value={draftForm.tid}
+                      onChange={(value) => updateDraftField("tid", value)}
+                      options={[
+                        { value: "", label: "请选择" },
+                        ...tidOptions.map((item) => ({ value: item.tid, label: `${item.tid} ${item.label}` })),
+                        ...(!tidOptions.some((item) => item.tid === String(draft.tid || "")) && draft.tid ? [{ value: String(draft.tid), label: `${draft.tid} ${draft.tid_label || ""}` }] : []),
+                      ]}
+                    />
                   </label>
                   <label>
                     <span>审核</span>
-                    <select value={draftForm.status} onChange={(event) => updateDraftField("status", event.target.value)}>
-                      {draftOptions.map((item) => <option value={item} key={item}>{item}</option>)}
-                    </select>
+                    <Select value={draftForm.status} onChange={(value) => updateDraftField("status", value)} options={draftOptions.map((item) => ({ value: item, label: item }))} />
                   </label>
                 </div>
                 {draftErrors.length ? <div className="form-error">{draftErrors[0]}</div> : null}
-                <div className="toolbar">
+                <Space wrap>
                   <IconButton icon={Save} className="primary" onClick={saveDraft} disabled={savingDraft || Boolean(draftErrors.length)}>保存草稿</IconButton>
                   <span className="muted">保存后分区来源会标记为 manual。</span>
-                </div>
+                </Space>
               </div>
               <DraftTags draft={draft} />
               <DraftHistory versions={draftVersions} />

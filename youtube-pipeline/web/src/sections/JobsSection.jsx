@@ -1,3 +1,4 @@
+import { Button, Select, Space } from "antd";
 import { RefreshCw } from "lucide-react";
 import { errorOptions } from "../constants";
 import { IconButton } from "../components/IconButton";
@@ -16,36 +17,27 @@ export function JobsSection({ state, actions }) {
     <section className="panel wide" id="jobs">
       <div className="panel-head">
         <h2>Jobs</h2>
-        <div className="toolbar">
-          <select value={jobFilters.jobType} onChange={(event) => updateJobFilters((prev) => ({ ...prev, jobType: event.target.value, offset: 0 }))}>
-            {jobTypes.map((item) => <option value={item} key={item || "all"}>{item || "全部任务"}</option>)}
-          </select>
-          <select value={jobFilters.status} onChange={(event) => updateJobFilters((prev) => ({ ...prev, status: event.target.value, offset: 0 }))}>
-            {jobStatuses.map((item) => <option value={item} key={item || "all"}>{item || "全部状态"}</option>)}
-          </select>
-          <select value={jobFilters.errorType} onChange={(event) => updateJobFilters((prev) => ({ ...prev, errorType: event.target.value, offset: 0 }))}>
-            <option value="">全部错误</option>
-            {errorOptions.map((item) => <option value={item} key={item}>{item}</option>)}
-          </select>
-          <select value={jobFilters.limit} onChange={(event) => updateJobFilters((prev) => ({ ...prev, limit: Number(event.target.value), offset: 0 }))}>
-            {[20, 30, 50, 100].map((item) => <option value={item} key={item}>{item} 条</option>)}
-          </select>
+        <Space wrap>
+          <Select value={jobFilters.jobType} style={{ width: 132 }} onChange={(value) => updateJobFilters((prev) => ({ ...prev, jobType: value, offset: 0 }))} options={jobTypes.map((item) => ({ value: item, label: item || "全部任务" }))} />
+          <Select value={jobFilters.status} style={{ width: 132 }} onChange={(value) => updateJobFilters((prev) => ({ ...prev, status: value, offset: 0 }))} options={jobStatuses.map((item) => ({ value: item, label: item || "全部状态" }))} />
+          <Select value={jobFilters.errorType} style={{ width: 132 }} onChange={(value) => updateJobFilters((prev) => ({ ...prev, errorType: value, offset: 0 }))} options={[{ value: "", label: "全部错误" }, ...errorOptions.map((item) => ({ value: item, label: item }))]} />
+          <Select value={jobFilters.limit} style={{ width: 100 }} onChange={(value) => updateJobFilters((prev) => ({ ...prev, limit: Number(value), offset: 0 }))} options={[20, 30, 50, 100].map((item) => ({ value: item, label: `${item} 条` }))} />
           <IconButton icon={RefreshCw} onClick={() => loadJobs(jobFilters)}>刷新</IconButton>
-        </div>
+        </Space>
       </div>
       <div className="events-toolbar">
-        <button disabled={offset <= 0} onClick={() => updateJobFilters((prev) => ({ ...prev, offset: Math.max(0, offset - limit) }))}>上一页</button>
+        <Button disabled={offset <= 0} onClick={() => updateJobFilters((prev) => ({ ...prev, offset: Math.max(0, offset - limit) }))}>上一页</Button>
         <span className="muted">offset {offset} · 当前 {rows.length} 条</span>
-        <button disabled={!jobs?.has_more} onClick={() => updateJobFilters((prev) => ({ ...prev, offset: offset + limit }))}>下一页</button>
+        <Button disabled={!jobs?.has_more} onClick={() => updateJobFilters((prev) => ({ ...prev, offset: offset + limit }))}>下一页</Button>
       </div>
       {rows.length ? (
         <div className="job-table">
           {rows.map((job) => (
             <div className="job-row" key={job.id}>
-              <button disabled={!job.video_id} onClick={() => selectVideo(job.video_id)}>
+              <Button type="text" disabled={!job.video_id} onClick={() => selectVideo(job.video_id)}>
                 <b>#{job.id} {job.job_type}</b>
                 <span>{job.video_title || job.video_id || "-"}</span>
-              </button>
+              </Button>
               <div>
                 <span className={`badge ${job.status}`}>{job.status}</span>
                 {job.error_type ? <span className="badge failed">{job.error_type}</span> : null}

@@ -37,7 +37,7 @@ export function AppLayout({ state, actions }) {
           <Space wrap>
             <Button onClick={actions.runWorker}>运行一轮</Button>
             <Button onClick={actions.discoverDryRun}>发现预览</Button>
-            <Button type="primary" onClick={actions.refreshAll} loading={state.loading}>刷新</Button>
+            <Button type="primary" onClick={actions.refreshCurrentPage} loading={state.loading}>刷新</Button>
           </Space>
         </Header>
         <Content className="app-content">

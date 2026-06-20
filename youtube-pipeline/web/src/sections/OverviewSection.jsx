@@ -1,3 +1,4 @@
+import { Button } from "antd";
 import { AlertTriangle, CheckCircle2, Clock, Database, HardDrive, PauseCircle, PlayCircle } from "lucide-react";
 import { fmtBytes, statusMap } from "../format";
 
@@ -94,15 +95,15 @@ export function OverviewSection({ state, actions }) {
         <div className="overview-lane">
           <div className="overview-lane-head">
             <h3>最近失败</h3>
-            {failedVideos.length ? <button onClick={() => applyQueuePreset("failed")}>查看失败队列</button> : null}
+            {failedVideos.length ? <Button size="small" onClick={() => applyQueuePreset("failed")}>查看失败队列</Button> : null}
           </div>
           {failedVideos.length ? (
             <div className="overview-failures">
               {failedVideos.slice(0, 5).map((video) => (
-                <button className="overview-failure" key={video.video_id} onClick={() => selectVideo(video.video_id)}>
+                <Button type="text" className="overview-failure" key={video.video_id} onClick={() => selectVideo(video.video_id)}>
                   <span>{video.title || video.video_id}</span>
                   <small>{video.video_id} · {video.last_error || "无错误详情"}</small>
-                </button>
+                </Button>
               ))}
             </div>
           ) : <div className="overview-empty">暂无失败视频。</div>}

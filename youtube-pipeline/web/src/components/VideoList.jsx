@@ -1,3 +1,4 @@
+import { Button, Checkbox } from "antd";
 import { escapeText, fmtCount, fmtDuration } from "../format";
 
 export function VideoList({ videos, selectedId, selectedVideoIds, onToggleSelected, onSelect }) {
@@ -12,13 +13,12 @@ export function VideoList({ videos, selectedId, selectedVideoIds, onToggleSelect
         const poster = item.media_files?.poster_path ? `/api/videos/${encodeURIComponent(video.video_id)}/file?type=poster` : "";
         return (
           <div className={`video-row${video.video_id === selectedId ? " active" : ""}`} key={video.video_id}>
-            <input
-              type="checkbox"
+            <Checkbox
               checked={selectedSet.has(video.video_id)}
               aria-label={`选择 ${title}`}
               onChange={(event) => onToggleSelected(video.video_id, event.target.checked)}
             />
-            <button className="video-main" onClick={() => onSelect(video.video_id)}>
+            <Button type="text" className="video-main" onClick={() => onSelect(video.video_id)}>
               {poster ? <img className="thumb" src={poster} alt="" /> : <div className="thumb" />}
               <div>
                 <div className="title">{title}</div>
@@ -32,7 +32,7 @@ export function VideoList({ videos, selectedId, selectedVideoIds, onToggleSelect
                   {draft.tid_source ? <span className="badge">{draft.tid_source}</span> : null}
                 </div>
               </div>
-            </button>
+            </Button>
           </div>
         );
       })}

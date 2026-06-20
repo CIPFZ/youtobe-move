@@ -1,3 +1,4 @@
+import { Button, Select, Space } from "antd";
 import { RefreshCw } from "lucide-react";
 import { IconButton } from "../components/IconButton";
 
@@ -14,20 +15,16 @@ export function EventsSection({ state, actions }) {
     <section className="panel wide" id="events">
       <div className="panel-head">
         <h2>事件</h2>
-        <div className="toolbar">
-          <select value={eventFilters.module} onChange={(event) => updateEventFilters((prev) => ({ ...prev, module: event.target.value, offset: 0 }))}>
-            {eventModules.map((item) => <option value={item} key={item || "all"}>{item || "全部模块"}</option>)}
-          </select>
-          <select value={eventFilters.limit} onChange={(event) => updateEventFilters((prev) => ({ ...prev, limit: Number(event.target.value), offset: 0 }))}>
-            {[20, 30, 50, 100].map((item) => <option value={item} key={item}>{item} 条</option>)}
-          </select>
+        <Space wrap>
+          <Select value={eventFilters.module} style={{ width: 132 }} onChange={(value) => updateEventFilters((prev) => ({ ...prev, module: value, offset: 0 }))} options={eventModules.map((item) => ({ value: item, label: item || "全部模块" }))} />
+          <Select value={eventFilters.limit} style={{ width: 100 }} onChange={(value) => updateEventFilters((prev) => ({ ...prev, limit: Number(value), offset: 0 }))} options={[20, 30, 50, 100].map((item) => ({ value: item, label: `${item} 条` }))} />
           <IconButton icon={RefreshCw} onClick={() => loadEvents(eventFilters)}>刷新</IconButton>
-        </div>
+        </Space>
       </div>
       <div className="events-toolbar">
-        <button disabled={offset <= 0} onClick={() => updateEventFilters((prev) => ({ ...prev, offset: Math.max(0, offset - limit) }))}>上一页</button>
+        <Button disabled={offset <= 0} onClick={() => updateEventFilters((prev) => ({ ...prev, offset: Math.max(0, offset - limit) }))}>上一页</Button>
         <span className="muted">offset {offset} · 当前 {rows.length} 条</span>
-        <button disabled={!events?.has_more} onClick={() => updateEventFilters((prev) => ({ ...prev, offset: offset + limit }))}>下一页</button>
+        <Button disabled={!events?.has_more} onClick={() => updateEventFilters((prev) => ({ ...prev, offset: offset + limit }))}>下一页</Button>
       </div>
       {rows.length ? (
         <div className="event-table">
