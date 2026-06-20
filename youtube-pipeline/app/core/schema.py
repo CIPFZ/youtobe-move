@@ -59,6 +59,28 @@ CREATE TABLE IF NOT EXISTS publish_drafts (
     FOREIGN KEY(video_id) REFERENCES videos(video_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS publish_draft_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    action TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    tid INTEGER,
+    tid_label TEXT NOT NULL DEFAULT '',
+    tid_reason TEXT NOT NULL DEFAULT '',
+    tid_source TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT '',
+    review_note TEXT NOT NULL DEFAULT '',
+    actor TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(video_id) REFERENCES videos(video_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_publish_draft_versions_video_platform_id
+ON publish_draft_versions(video_id, platform, id);
+
 CREATE TABLE IF NOT EXISTS publish_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     video_id TEXT NOT NULL,

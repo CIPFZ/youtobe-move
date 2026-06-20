@@ -8,7 +8,7 @@ from unittest.mock import patch
 from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
-from app.publish_service import describe_next, describe_video, publish_next, publish_video, review_publish_draft
+from app.publish_service import describe_next, describe_video, publish_next, publish_video, review_publish_draft, update_publish_draft
 
 
 class PublishServiceTests(unittest.TestCase):
@@ -84,6 +84,10 @@ class PublishServiceTests(unittest.TestCase):
         self.assertEqual(draft["tid_source"], "llm")
         self.assertEqual(draft["status"], "pending")
         self.assertEqual(job["status"], "succeeded")
+        versions = self.repo.list_publish_draft_versions(video_id, "bilibili")
+        self.assertEqual(len(versions), 1)
+        self.assertEqual(versions[0]["action"], "draft_created")
+        self.assertEqual(versions[0]["title"], "中文标题")
 
     def test_describe_next_respects_deferred_retry_job(self):
         video_id, _, _ = self._add_downloaded_video()
@@ -143,6 +147,29 @@ class PublishServiceTests(unittest.TestCase):
 
         self.assertEqual(result["draft"]["status"], "approved")
         self.assertEqual(result["draft"]["review_note"], "ok")
+        versions = self.repo.list_publish_draft_versions(video_id, "bilibili")
+        self.assertEqual(versions[0]["action"], "draft_approved")
+        self.assertEqual(versions[0]["review_note"], "ok")
+
+    def test_update_publish_draft_records_history_version(self):
+        video_id, _, _ = self._add_downloaded_video()
+        self._save_ready_draft(video_id)
+
+        update_publish_draft(
+            video_id,
+            self.config,
+            title="人工标题",
+            description="人工描述",
+            tags=["人工"],
+            tid=188,
+            status="pending",
+        )
+
+        versions = self.repo.list_publish_draft_versions(video_id, "bilibili")
+        self.assertEqual(versions[0]["action"], "draft_updated")
+        self.assertEqual(versions[0]["title"], "人工标题")
+        self.assertEqual(versions[0]["tid"], 188)
+        self.assertEqual(versions[0]["tid_source"], "manual")
 
     def test_publish_next_skips_in_manual_mode(self):
         video_id, _, _ = self._add_downloaded_video()

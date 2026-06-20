@@ -359,6 +359,57 @@ class Repository:
         )
         self.conn.commit()
 
+    def _create_publish_draft_version(
+        self,
+        video_id: str,
+        platform: str,
+        action: str,
+        draft: dict[str, Any],
+        actor: str = "",
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO publish_draft_versions (
+                video_id, platform, action, title, description, tags_json, tid, tid_label,
+                tid_reason, tid_source, status, review_note, actor
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                video_id,
+                platform,
+                action,
+                str(draft.get("title") or ""),
+                str(draft.get("description") or ""),
+                str(draft.get("tags_json") or "[]"),
+                draft.get("tid"),
+                str(draft.get("tid_label") or ""),
+                str(draft.get("tid_reason") or ""),
+                str(draft.get("tid_source") or ""),
+                str(draft.get("status") or ""),
+                str(draft.get("review_note") or ""),
+                actor,
+            ),
+        )
+
+    def list_publish_draft_versions(
+        self,
+        video_id: str,
+        platform: str,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT * FROM publish_draft_versions
+            WHERE video_id=? AND platform=?
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (video_id, platform, limit, offset),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def save_publish_draft(
         self,
         video_id: str,
@@ -373,6 +424,7 @@ class Repository:
         llm_raw_output: str = "",
         status: str = "draft",
     ) -> None:
+        action = "draft_created" if not self.get_publish_draft(video_id, platform) else "draft_regenerated"
         self.conn.execute(
             """
             INSERT INTO publish_drafts (
@@ -408,6 +460,9 @@ class Repository:
                 status,
             ),
         )
+        draft = self.get_publish_draft(video_id, platform)
+        if draft:
+            self._create_publish_draft_version(video_id, platform, action, draft, actor=str(tid_source or ""))
         self.create_event(video_id, None, "core", "publish_draft_saved", f"Publish draft saved: {platform}")
         self.conn.commit()
 
@@ -468,6 +523,7 @@ class Repository:
         result = self.get_publish_draft(video_id, platform)
         if result is None:
             raise RuntimeError(f"Publish draft update failed: {video_id}/{platform}")
+        self._create_publish_draft_version(video_id, platform, "draft_updated", result, actor="operator")
         return result
 
     def update_publish_draft_status(
@@ -501,6 +557,7 @@ class Repository:
         result = self.get_publish_draft(video_id, platform)
         if result is None:
             raise RuntimeError(f"Publish draft status update failed: {video_id}/{platform}")
+        self._create_publish_draft_version(video_id, platform, f"draft_{status}", result, actor="operator")
         return result
 
     def find_next_publishable_video(

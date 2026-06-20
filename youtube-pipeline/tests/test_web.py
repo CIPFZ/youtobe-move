@@ -8,7 +8,17 @@ from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.publish_service import update_publish_draft
-from app.web import WebError, _handle_action, _handle_batch_action, _list_events, _list_failures, _list_jobs, _list_videos, _status_settings
+from app.web import (
+    WebError,
+    _handle_action,
+    _handle_batch_action,
+    _list_events,
+    _list_failures,
+    _list_jobs,
+    _list_videos,
+    _status_settings,
+    _video_detail,
+)
 
 
 class WebTests(unittest.TestCase):
@@ -47,6 +57,28 @@ class WebTests(unittest.TestCase):
         self.assertEqual(row["video"]["video_id"], "abc123def45")
         self.assertEqual(row["publish_draft"]["title"], "Draft title")
         self.assertEqual(row["latest_download_job"]["status"], "succeeded")
+
+    def test_video_detail_includes_draft_versions(self):
+        self.repo.upsert_video(
+            "abc123def45",
+            "https://www.youtube.com/watch?v=abc123def45",
+            title="Original title",
+            status="ready_to_publish",
+        )
+        self.repo.save_publish_draft(
+            "abc123def45",
+            "bilibili",
+            title="Draft title",
+            description="Draft body",
+            tags=["tag"],
+            tid=47,
+            tid_source="llm",
+        )
+
+        result = _video_detail(self.config, "abc123def45")
+
+        self.assertEqual(result["publish_draft_versions"][0]["action"], "draft_created")
+        self.assertEqual(result["publish_draft_versions"][0]["title"], "Draft title")
 
     def test_list_videos_filters_by_draft_status_and_error_type(self):
         self.repo.upsert_video(

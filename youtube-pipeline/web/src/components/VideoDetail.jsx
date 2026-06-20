@@ -8,6 +8,7 @@ import { IconButton } from "./IconButton";
 export function VideoDetail({ data, configByKey, onAction, onSaved, showToast }) {
   const video = data.video;
   const draft = data.publish_draft || {};
+  const draftVersions = data.publish_draft_versions || [];
   const records = data.publish_records || [];
   const events = data.events || [];
   const jobs = [
@@ -136,6 +137,7 @@ export function VideoDetail({ data, configByKey, onAction, onSaved, showToast })
                 </div>
               </div>
               <DraftTags draft={draft} />
+              <DraftHistory versions={draftVersions} />
             </>
           ) : <div className="muted">暂无草稿。</div>}
         </section>
@@ -242,6 +244,44 @@ function DraftTags({ draft }) {
   );
 }
 
+function DraftHistory({ versions }) {
+  if (!versions.length) return <div className="muted">暂无草稿历史。</div>;
+  return (
+    <div className="draft-history">
+      <div className="section-headline">
+        <h3>草稿历史</h3>
+        <span>最近 {versions.length} 条</span>
+      </div>
+      <div className="history-list">
+        {versions.map((version) => {
+          const tags = parseTags(version.tags_json);
+          return (
+            <div className="history-row" key={version.id}>
+              <div className="history-main">
+                <div className="history-head">
+                  <b>{draftActionLabel(version.action)}</b>
+                  <span className={`badge ${version.status || ""}`}>{version.status || "-"}</span>
+                  <span>{version.created_at}</span>
+                </div>
+                <div className="history-title">{version.title || "-"}</div>
+                <div className="muted">
+                  分区 {version.tid || "-"} {version.tid_label || ""} · 来源 {sourceLabel(version.tid_source || "")}
+                </div>
+                {version.review_note ? <div className="muted">审核备注：{version.review_note}</div> : null}
+                {tags.length ? (
+                  <div className="badges compact">
+                    {tags.map((tag) => <span className="badge" key={`${version.id}-${tag}`}>{tag}</span>)}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function JobTimeline({ jobs, leaseSeconds }) {
   if (!jobs.length) return <div className="muted">暂无任务记录。</div>;
   return (
@@ -273,6 +313,18 @@ function JobTimeline({ jobs, leaseSeconds }) {
       })}
     </div>
   );
+}
+
+function draftActionLabel(action) {
+  const labels = {
+    draft_created: "生成",
+    draft_regenerated: "重新生成",
+    draft_updated: "编辑",
+    draft_approved: "审核通过",
+    draft_rejected: "审核拒绝",
+    draft_pending: "退回待审",
+  };
+  return labels[action] || action || "-";
 }
 
 function getLockState(job, leaseSeconds) {

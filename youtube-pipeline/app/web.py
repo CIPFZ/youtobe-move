@@ -96,6 +96,7 @@ def _video_detail(config: Config, video_id: str) -> dict[str, Any]:
             "latest_describe_job": repo.get_latest_job(video_id, "describe"),
             "latest_publish_job": repo.get_latest_job(video_id, "publish"),
             "publish_draft": repo.get_publish_draft(video_id, "bilibili"),
+            "publish_draft_versions": repo.list_publish_draft_versions(video_id, "bilibili", limit=20),
             "publish_records": repo.list_publish_records(video_id),
             "events": repo.list_events(video_id=video_id, limit=30),
         }
