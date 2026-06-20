@@ -57,14 +57,26 @@ class StorageTests(unittest.TestCase):
         self.repo.save_media_files(video_id, meta_path=str(meta), merged_path=str(merged))
         return merged
 
+    def _failed_video_with_files(self, video_id: str = "def123abc45") -> Path:
+        video_dir = self.output_dir / video_id
+        video_dir.mkdir()
+        merged = video_dir / f"{video_id}_merge.mp4"
+        merged.write_bytes(b"failed-video")
+        self.repo.upsert_video(video_id, f"https://www.youtube.com/watch?v={video_id}", status="failed")
+        self.repo.save_media_files(video_id, merged_path=str(merged))
+        return merged
+
     def test_storage_status_reports_sizes_and_cleanup_preview(self):
         self._published_video_with_files()
+        self._failed_video_with_files()
 
         status = get_storage_status(self.config)
+        sizes = {item["status"]: item["size_bytes"] for item in status["by_status"]}
 
         self.assertGreater(status["total_size_bytes"], 0)
-        self.assertEqual(status["cleanup_preview"]["count"], 1)
-        self.assertEqual(status["by_status"][0]["status"], "published")
+        self.assertEqual(status["cleanup_preview"]["count"], 2)
+        self.assertGreater(sizes["published"], 0)
+        self.assertGreater(sizes["failed"], 0)
 
     def test_published_retention_uses_publish_record_time(self):
         self.config.storage_published_retention_days = 7

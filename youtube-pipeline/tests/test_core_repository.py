@@ -59,6 +59,19 @@ class CoreRepositoryTests(unittest.TestCase):
         self.assertIn("abc123def45", metadata["ytdlp_meta_json"])
         self.assertTrue(files["merged_path"].endswith("abc123def45_merge.mp4"))
 
+    def test_list_videos_with_media_files_filters_statuses(self):
+        repo = self._repo()
+        repo.upsert_video("abc123def45", "https://www.youtube.com/watch?v=abc123def45", status="selected")
+        repo.save_media_files("abc123def45", merged_path="runtime/downloads/abc123def45/abc123def45_merge.mp4")
+        repo.upsert_video("def123abc45", "https://www.youtube.com/watch?v=def123abc45", status="failed")
+        repo.save_media_files("def123abc45", merged_path="runtime/downloads/def123abc45/def123abc45_merge.mp4")
+
+        rows = repo.list_videos_with_media_files(statuses={"failed"})
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["video_id"], "def123abc45")
+        self.assertTrue(rows[0]["merged_path"].endswith("def123abc45_merge.mp4"))
+
     def test_job_helpers_find_and_update_pending_job(self):
         repo = self._repo()
         repo.upsert_video("abc123def45", "https://www.youtube.com/watch?v=abc123def45")

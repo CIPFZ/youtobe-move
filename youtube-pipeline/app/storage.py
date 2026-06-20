@@ -109,9 +109,8 @@ def get_storage_status(config: Config) -> dict[str, Any]:
     with connect(config.db_path) as conn:
         init_schema(conn)
         repo = Repository(conn)
-        for video in repo.list_videos(limit=100000):
-            video_id = str(video["video_id"])
-            media_size = sum(item["size_bytes"] for item in _media_paths(config, repo.get_media_files(video_id), output_dir))
+        for video in repo.list_videos_with_media_files(limit=100000):
+            media_size = sum(item["size_bytes"] for item in _media_paths(config, video, output_dir))
             by_status[str(video["status"])] = by_status.get(str(video["status"]), 0) + media_size
 
     max_bytes = int(float(config.storage_max_gb) * 1024 * 1024 * 1024)
@@ -157,11 +156,9 @@ def _cleanup_candidates(config: Config) -> list[dict[str, Any]]:
     with connect(config.db_path) as conn:
         init_schema(conn)
         repo = Repository(conn)
-        for video in repo.list_videos(limit=100000):
+        for video in repo.list_videos_with_media_files(statuses=statuses, limit=100000):
             video_id = str(video["video_id"])
             status = str(video["status"])
-            if status not in statuses:
-                continue
             updated_at_raw = str(video.get("updated_at") or "")
             reference_at_raw = updated_at_raw
             reference_at = _parse_db_datetime(updated_at_raw)
@@ -182,7 +179,7 @@ def _cleanup_candidates(config: Config) -> list[dict[str, Any]]:
                 continue
             paths = [
                 item
-                for item in _media_paths(config, repo.get_media_files(video_id), output_dir)
+                for item in _media_paths(config, video, output_dir)
                 if item["exists"] and item["inside_output_dir"]
             ]
             size = sum(int(item["size_bytes"]) for item in paths)

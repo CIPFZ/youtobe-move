@@ -335,6 +335,45 @@ class Repository:
         row = self.conn.execute("SELECT * FROM media_files WHERE video_id=?", (video_id,)).fetchone()
         return row_to_dict(row)
 
+    def list_videos_with_media_files(
+        self,
+        statuses: list[str] | tuple[str, ...] | set[str] | None = None,
+        limit: int = 100000,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        filters: list[str] = []
+        params: list[Any] = []
+        if statuses:
+            selected_statuses = [str(status) for status in statuses]
+            for status in selected_statuses:
+                ensure_video_status(status)
+            placeholders = ",".join("?" for _ in selected_statuses)
+            filters.append(f"videos.status IN ({placeholders})")
+            params.extend(selected_statuses)
+        where = f"WHERE {' AND '.join(filters)}" if filters else ""
+        params.extend([limit, offset])
+        rows = self.conn.execute(
+            f"""
+            SELECT
+                videos.video_id,
+                videos.status,
+                videos.title,
+                videos.updated_at,
+                media_files.meta_path,
+                media_files.video_path,
+                media_files.audio_path,
+                media_files.poster_path,
+                media_files.merged_path
+            FROM videos
+            LEFT JOIN media_files ON media_files.video_id = videos.video_id
+            {where}
+            ORDER BY videos.priority ASC, videos.updated_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def clear_media_files(self, video_id: str, fields: list[str]) -> None:
         allowed_fields = {"meta_path", "video_path", "audio_path", "poster_path", "merged_path"}
         selected = [field for field in fields if field in allowed_fields]
