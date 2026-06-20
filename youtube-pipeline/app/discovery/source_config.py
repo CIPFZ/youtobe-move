@@ -50,6 +50,9 @@ def normalize_discovery_source(source: dict[str, Any]) -> dict[str, Any]:
         result["name"] = name
     result["enabled"] = _parse_bool(source.get("enabled"), default=True)
     result["priority"] = int(source.get("priority") if source.get("priority") not in (None, "") else 100)
+    result["score_weight"] = float(source.get("score_weight") if source.get("score_weight") not in (None, "") else 1.0)
+    if result["score_weight"] < 0:
+        raise ValueError("Discovery source score_weight must be >= 0")
 
     max_results = int(source.get("max_results") or 0)
     if not (1 <= max_results <= 50):

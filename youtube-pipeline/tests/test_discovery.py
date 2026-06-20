@@ -207,6 +207,18 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(result["accepted"][0]["video_id"], "high1234567")
         self.assertGreater(result["accepted"][0]["score"], result["accepted"][1]["score"])
 
+    def test_source_score_weight_changes_candidate_order(self):
+        low_views = self._candidate(video_id="low12345678", view_count=100)
+        high_views = self._candidate(video_id="high1234567", view_count=1_000_000)
+        low_views = VideoCandidate(**{**low_views.__dict__, "source_params": {"score_weight": 3.0}})
+        high_views = VideoCandidate(**{**high_views.__dict__, "source_params": {"score_weight": 1.0}})
+
+        with patch("app.discovery.service.fetch_candidates", return_value=[low_views, high_views]):
+            result = discover_videos(self.config, dry_run=True)
+
+        self.assertEqual(result["accepted"][0]["video_id"], "low12345678")
+        self.assertGreater(result["accepted"][0]["score"], result["accepted"][1]["score"])
+
     def test_channel_uploads_source_accepts_handle(self):
         source = DiscoverySource(
             type="channel_uploads",

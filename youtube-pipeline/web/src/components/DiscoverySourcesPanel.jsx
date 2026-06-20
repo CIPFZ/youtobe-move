@@ -16,6 +16,7 @@ function emptyDiscoveryForm() {
     max_results: "2",
     enabled: "true",
     priority: "100",
+    score_weight: "1",
     min_duration_seconds: "",
     max_duration_seconds: "",
     min_view_count: "",
@@ -41,6 +42,7 @@ function formToSource(form) {
     max_results: Number.parseInt(form.max_results || "2", 10),
     enabled: form.enabled === "true",
     priority: Number.parseInt(form.priority || "100", 10),
+    score_weight: Number.parseFloat(form.score_weight || "1"),
   };
   for (const key of ["min_duration_seconds", "max_duration_seconds", "min_view_count"]) {
     if (String(form[key] || "").trim()) source[key] = Number.parseInt(form[key], 10);
@@ -95,7 +97,7 @@ export function DiscoverySourcesPanel({ sources, preview, onSave, onDelete, onPr
             <div>
               <b>{source.name || `${source.type}:${source.index}`}</b>
               <div className="muted">
-                {source.type} · {source.enabled === false ? "disabled" : "enabled"} · priority {source.priority ?? 100} · max {source.max_results} · {source.keyword || source.region_code || source.handle || source.channel_id || "-"}
+                {source.type} · {source.enabled === false ? "disabled" : "enabled"} · priority {source.priority ?? 100} · weight {source.score_weight ?? 1} · max {source.max_results} · {source.keyword || source.region_code || source.handle || source.channel_id || "-"}
               </div>
             </div>
             <span className={`badge${source.enabled === false ? " failed" : ""}`}>{source.index}</span>
@@ -130,6 +132,10 @@ export function DiscoverySourcesPanel({ sources, preview, onSave, onDelete, onPr
             <input value={form.priority} onChange={(event) => updateField("priority", event.target.value)} />
           </label>
         </div>
+        <label>
+          <span>分数权重</span>
+          <input value={form.score_weight} onChange={(event) => updateField("score_weight", event.target.value)} />
+        </label>
         <label>
           <span>名称</span>
           <input value={form.name} onChange={(event) => updateField("name", event.target.value)} />

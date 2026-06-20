@@ -54,6 +54,13 @@ class DiscoverySourceConfigTests(unittest.TestCase):
         self.assertEqual(source["handle"], "@demo")
         self.assertTrue(source["enabled"])
         self.assertEqual(source["priority"], 100)
+        self.assertEqual(source["score_weight"], 1.0)
+
+        weighted = normalize_discovery_source({"type": "search", "keyword": "demo", "max_results": 2, "score_weight": "1.5"})
+        self.assertEqual(weighted["score_weight"], 1.5)
+
+        with self.assertRaises(ValueError):
+            normalize_discovery_source({"type": "search", "keyword": "demo", "max_results": 2, "score_weight": "-1"})
 
     def test_normalize_keeps_source_filter_overrides(self):
         source = normalize_discovery_source(

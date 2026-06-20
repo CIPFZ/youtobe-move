@@ -1064,7 +1064,12 @@ P9.5 发现源管理已完成基础版：
   - `search` 必须有 keyword。
   - `channel_uploads` 必须有 channel_id 或 handle。
   - handle 自动补齐 `@`。
+  - `score_weight` 默认为 `1.0`，用于调整该 source 产出候选的最终评分。
 - discovery 执行时会跳过 `enabled=false` 的 source，并按 `priority` 升序执行。
+- discovery 候选排序已支持 source 权重：
+  - 基础分仍由 source type、播放量、时长区间计算。
+  - 最终分数为基础分乘以 `score_weight`。
+  - `priority` 继续只表示 source 执行顺序和入队优先级，不和 `score_weight` 混用。
 - source 级过滤只覆盖已配置字段，未配置字段继续使用全局 discovery filter。
 - 新增 Web API：
   - `GET /api/discovery/sources`
@@ -1083,6 +1088,7 @@ P9.5 发现源管理已完成基础版：
   - 单 source dry-run 预览。
   - 启用/禁用 source。
   - 修改 source priority。
+  - 修改 source score weight。
   - 配置 source 级过滤覆盖。
   - 表单按 source type 显示不同字段。
   - preview 结果支持通过/拒绝列表分页查看。
@@ -1093,11 +1099,11 @@ P9.5 发现源管理已完成基础版：
   - 单 source preview 不入库。
   - disabled source 不参与发现。
   - source 按 priority 排序。
+  - source score weight 影响候选排序。
   - source 级过滤覆盖全局过滤。
 
 P9.5 未完成：
 
-- source 权重。
 - 更完整的候选详情展示。
 
 P9.6 Web 页面重构已完成基础版：

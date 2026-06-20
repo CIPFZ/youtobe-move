@@ -24,7 +24,11 @@ def score_candidate(candidate: VideoCandidate) -> float:
         elif 30 <= candidate.duration <= 1200:
             score += 5.0
 
-    return round(score, 3)
+    try:
+        score_weight = float(candidate.source_params.get("score_weight") or 1.0)
+    except (TypeError, ValueError):
+        score_weight = 1.0
+    return round(score * max(score_weight, 0.0), 3)
 
 
 def sort_candidates(candidates: list[VideoCandidate]) -> list[VideoCandidate]:
