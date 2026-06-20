@@ -5,7 +5,7 @@ from pathlib import Path
 from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
-from app.storage import cleanup_media, get_storage_status
+from app.storage import cleanup_media, cleanup_video_media, get_storage_status
 
 
 class TestConfig:
@@ -86,6 +86,31 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(media["meta_path"], "")
         events = self.repo.list_events(video_id="abc123def45", limit=20)
         self.assertTrue(any(event["event_type"] == "storage_media_cleaned" for event in events))
+
+    def test_cleanup_video_media_dry_run_keeps_files(self):
+        merged = self._published_video_with_files()
+
+        result = cleanup_video_media(self.config, "abc123def45", dry_run=True)
+
+        self.assertEqual(result["status"], "dry_run")
+        self.assertEqual(result["item"]["size_bytes"], len(b"video-data") + len(b"{}"))
+        self.assertTrue(merged.exists())
+
+    def test_cleanup_video_media_blocks_ineligible_status_without_force(self):
+        video_id = "abc123def45"
+        video_dir = self.output_dir / video_id
+        video_dir.mkdir()
+        merged = video_dir / f"{video_id}_merge.mp4"
+        merged.write_bytes(b"video-data")
+        self.repo.upsert_video(video_id, f"https://www.youtube.com/watch?v={video_id}")
+        self.repo.save_media_files(video_id, merged_path=str(merged))
+
+        with self.assertRaises(RuntimeError):
+            cleanup_video_media(self.config, video_id, dry_run=False)
+
+        result = cleanup_video_media(self.config, video_id, dry_run=False, force=True)
+        self.assertEqual(result["status"], "cleaned")
+        self.assertFalse(merged.exists())
 
 
 if __name__ == "__main__":

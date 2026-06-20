@@ -199,6 +199,11 @@ function App() {
       body.confirm = true;
     }
     if (action === "skip" && !window.confirm("确认跳过该视频？")) return;
+    if (action === "cleanup-media") {
+      if (!window.confirm("确认清理该视频的媒体文件？数据库记录会保留。")) return;
+      body.confirm = true;
+      body.dry_run = false;
+    }
     try {
       const result = await api(`/api/videos/${encodeURIComponent(videoId)}/${action}`, {
         method: "POST",
@@ -822,6 +827,7 @@ function VideoDetail({ data, configByKey, onAction, onSaved, showToast }) {
   const canDownload = ["selected", "failed"].includes(video.status);
   const canRetry = video.status === "failed";
   const canSkip = !["published", "skipped"].includes(video.status);
+  const canCleanupMedia = Boolean(data.media_files?.merged_path || data.media_files?.video_path || data.media_files?.audio_path || data.media_files?.poster_path);
   const tidOptions = parseTidOptions(configByKey?.BILIBILI_TID_OPTIONS?.value);
   const [draftForm, setDraftForm] = useState(() => makeDraftForm(draft));
   const [savingDraft, setSavingDraft] = useState(false);
@@ -880,6 +886,7 @@ function VideoDetail({ data, configByKey, onAction, onSaved, showToast }) {
             <IconButton icon={Send} className="primary" disabled={!canPublish} onClick={() => onAction(video.video_id, "publish")}>真实发布</IconButton>
             <IconButton icon={RotateCcw} disabled={!canRetry} onClick={() => onAction(video.video_id, "retry")}>重试</IconButton>
             <IconButton icon={SkipForward} className="danger" disabled={!canSkip} onClick={() => onAction(video.video_id, "skip")}>跳过</IconButton>
+            <IconButton icon={HardDrive} className="danger" disabled={!canCleanupMedia} onClick={() => onAction(video.video_id, "cleanup-media")}>清理媒体</IconButton>
           </div>
         </section>
 

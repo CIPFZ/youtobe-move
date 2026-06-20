@@ -977,7 +977,13 @@ P9.4 存储监控和清理已完成基础版：
 - 新增 Web API：
   - `GET /api/storage`
   - `POST /api/storage/cleanup`
+  - `POST /api/videos/<id>/cleanup-media`
 - 真实清理要求 `confirm=true`。
+- 单视频媒体清理：
+  - 默认只允许清理 `STORAGE_CLEANUP_STATUSES` 中的状态。
+  - 可通过 service 层 `force=True` 覆盖，但 Web 默认不暴露 force。
+  - 保留数据库主记录和发布记录。
+  - 清理后清空对应 `media_files` 路径。
 - React 页面新增存储面板：
   - 下载目录占用。
   - 磁盘剩余。
@@ -986,15 +992,17 @@ P9.4 存储监控和清理已完成基础版：
   - 按状态占用。
   - 清理候选预览。
   - 清理预览/执行清理按钮。
+- React 视频详情页新增单视频“清理媒体”按钮。
 - 单元测试覆盖：
   - 存储统计和清理候选。
   - dry-run 不删除文件。
   - 真实清理删除文件并清空媒体路径。
+  - 单视频 dry-run。
+  - 单视频非 eligible 状态默认阻断。
 
 P9.4 未完成：
 
 - worker 自动触发存储清理。
-- 单视频媒体文件清理按钮。
 - 清理策略更细分，如只清理已发布且发布超过 N 天。
 - 大数据量场景下的 SQL 聚合优化。
 

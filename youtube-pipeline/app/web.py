@@ -26,7 +26,7 @@ from app.discovery.source_config import (
 from app.download_service import download_next, download_video_from_db
 from app.operations import add_video_url, add_video_urls, pipeline_status, retry_video, skip_video
 from app.publish_service import describe_video, publish_next, publish_video, review_publish_draft, update_publish_draft
-from app.storage import cleanup_media, get_storage_status
+from app.storage import cleanup_media, cleanup_video_media, get_storage_status
 from app.worker import run_worker_once
 from app.youtube_api import parse_video_id
 
@@ -459,6 +459,19 @@ class PipelineRequestHandler(BaseHTTPRequestHandler):
                     )
                 except (TypeError, ValueError) as exc:
                     raise WebError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
+                return
+            if method == "POST" and len(parts) == 4 and parts[3] == "cleanup-media":
+                dry_run = bool(body.get("dry_run", True))
+                if not dry_run and body.get("confirm") is not True:
+                    raise WebError(HTTPStatus.BAD_REQUEST, "Media cleanup requires confirm=true")
+                self._send_json(
+                    cleanup_video_media(
+                        self.config,
+                        video_id,
+                        dry_run=dry_run,
+                        force=bool(body.get("force", False)),
+                    )
+                )
                 return
             if method == "POST" and len(parts) == 4:
                 self._send_json(_handle_action(self.config, video_id, parts[3], body))
