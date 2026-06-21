@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -27,7 +28,7 @@ from app.download_service import download_next, download_video_from_db
 from app.operations import add_video_url, add_video_urls, pipeline_status, retry_video, skip_video
 from app.publish_service import describe_video, publish_draft_rules, publish_next, publish_video, review_publish_draft, update_publish_draft
 from app.storage import cleanup_media, cleanup_video_media, get_storage_status
-from app.worker import run_worker_once
+from app.worker import run_embedded_scheduler_loop, run_worker_once
 from app.youtube_api import parse_video_id
 
 
@@ -37,6 +38,13 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = PACKAGE_DIR.parent
 REACT_DIST_DIR = PROJECT_DIR / "web" / "dist"
 LEGACY_STATIC_DIR = PACKAGE_DIR / "web_static"
+
+
+def _run_embedded_worker(config: Config, stop_event: threading.Event) -> None:
+    try:
+        run_embedded_scheduler_loop(config, stop_event=stop_event)
+    except Exception:
+        logger.exception("Embedded worker loop crashed")
 
 
 class WebError(Exception):
@@ -151,6 +159,8 @@ def _status_settings(config: Config) -> dict[str, Any]:
         "pipeline_enabled": config.pipeline_enabled,
         "publish_mode": config.publish_mode,
         "worker_interval_seconds": config.worker_interval_seconds,
+        "worker_queue_interval_seconds": config.worker_queue_interval_seconds,
+        "worker_publish_interval_seconds": config.worker_publish_interval_seconds,
         "worker_cron": config.worker_cron,
         "worker_enable_discovery": config.worker_enable_discovery,
         "worker_enable_download": config.worker_enable_download,
@@ -612,11 +622,22 @@ def run_web_server(config: Config, host: str | None = None, port: int | None = N
     bind_host = host or config.web_host
     bind_port = port or config.web_port
     server = PipelineHTTPServer((bind_host, bind_port), PipelineRequestHandler, config)
+    stop_event = threading.Event()
+    worker_thread = threading.Thread(
+        target=_run_embedded_worker,
+        args=(config, stop_event),
+        name="youtube-pipeline-worker",
+        daemon=True,
+    )
+    worker_thread.start()
     logger.info("Web management UI started: http://%s:%s", bind_host, bind_port)
+    logger.info("Embedded worker scheduler started")
     try:
         server.serve_forever()
     finally:
+        stop_event.set()
         server.server_close()
+        worker_thread.join(timeout=5)
 
 
 def _static_root() -> Path:

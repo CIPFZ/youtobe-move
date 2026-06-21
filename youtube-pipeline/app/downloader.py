@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -18,6 +19,7 @@ from app.config import Config
 logger = logging.getLogger("youtube-pipeline")
 
 DownloadEventCallback = Callable[[str, str, dict[str, Any] | None], None]
+ProgressCallback = Callable[[dict[str, Any]], None]
 
 
 def json_default(value: Any) -> str:
@@ -80,6 +82,7 @@ def download_stream(
     output_name: str,
     format_selector: str,
     config: Config,
+    progress_callback: ProgressCallback | None = None,
 ) -> Path:
     logger.info("Downloading %s stream: format=%s output_dir=%s", output_name, format_selector, out_dir)
     opts = build_ytdlp_options(config)
@@ -88,6 +91,31 @@ def download_stream(
         "outtmpl": str(out_dir / f"{output_name}.%(ext)s"),
         "overwrites": True,
     })
+    if progress_callback:
+        last_emit = 0.0
+
+        def progress_hook(status: dict[str, Any]) -> None:
+            nonlocal last_emit
+            now = time.monotonic()
+            if status.get("status") == "downloading" and now - last_emit < 1:
+                return
+            last_emit = now
+            total = status.get("total_bytes") or status.get("total_bytes_estimate") or 0
+            downloaded = status.get("downloaded_bytes") or 0
+            percent = (float(downloaded) / float(total) * 100) if total else 0
+            progress_callback(
+                {
+                    "stage": output_name,
+                    "status": status.get("status") or "",
+                    "percent": percent,
+                    "downloaded_bytes": downloaded,
+                    "total_bytes": total,
+                    "speed_bytes": status.get("speed") or 0,
+                    "eta_seconds": status.get("eta") or 0,
+                }
+            )
+
+        opts["progress_hooks"] = [progress_hook]
 
     before = set(out_dir.glob(f"{output_name}.*"))
     for old_file in before:
@@ -235,6 +263,7 @@ def download_video_assets(
     url: str,
     config: Config,
     event_callback: DownloadEventCallback | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     def emit(event_type: str, message: str, payload: dict[str, Any] | None = None) -> None:
         if event_callback:
@@ -248,9 +277,9 @@ def download_video_assets(
     meta_path = out_dir / "meta.json"
     write_meta(info, meta_path)
     emit("metadata_saved", "Metadata saved", {"path": str(meta_path)})
-    video_path = download_stream(url, out_dir, "video", config.video_format, config)
+    video_path = download_stream(url, out_dir, "video", config.video_format, config, progress_callback=progress_callback)
     emit("video_downloaded", "Video stream downloaded", {"path": str(video_path)})
-    audio_path = download_stream(url, out_dir, "audio", config.audio_format, config)
+    audio_path = download_stream(url, out_dir, "audio", config.audio_format, config, progress_callback=progress_callback)
     emit("audio_downloaded", "Audio stream downloaded", {"path": str(audio_path)})
     poster_path = download_poster(info, out_dir, config)
     emit("poster_downloaded", "Poster downloaded", {"path": str(poster_path) if poster_path else ""})

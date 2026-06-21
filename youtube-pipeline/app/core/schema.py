@@ -111,6 +111,12 @@ CREATE TABLE IF NOT EXISTS jobs (
     started_at TEXT,
     finished_at TEXT,
     next_run_at TEXT,
+    progress_stage TEXT NOT NULL DEFAULT '',
+    progress_percent REAL NOT NULL DEFAULT 0,
+    progress_downloaded_bytes INTEGER NOT NULL DEFAULT 0,
+    progress_total_bytes INTEGER NOT NULL DEFAULT 0,
+    progress_speed_bytes REAL NOT NULL DEFAULT 0,
+    progress_eta_seconds REAL NOT NULL DEFAULT 0,
     error_type TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT '',
     payload_json TEXT NOT NULL DEFAULT '{}',
@@ -159,6 +165,18 @@ def init_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE jobs ADD COLUMN next_run_at TEXT")
     if "error_type" not in job_columns:
         conn.execute("ALTER TABLE jobs ADD COLUMN error_type TEXT NOT NULL DEFAULT ''")
+    if "progress_stage" not in job_columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN progress_stage TEXT NOT NULL DEFAULT ''")
+    if "progress_percent" not in job_columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN progress_percent REAL NOT NULL DEFAULT 0")
+    if "progress_downloaded_bytes" not in job_columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN progress_downloaded_bytes INTEGER NOT NULL DEFAULT 0")
+    if "progress_total_bytes" not in job_columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN progress_total_bytes INTEGER NOT NULL DEFAULT 0")
+    if "progress_speed_bytes" not in job_columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN progress_speed_bytes REAL NOT NULL DEFAULT 0")
+    if "progress_eta_seconds" not in job_columns:
+        conn.execute("ALTER TABLE jobs ADD COLUMN progress_eta_seconds REAL NOT NULL DEFAULT 0")
     video_columns = {
         row["name"]
         for row in conn.execute("PRAGMA table_info(videos)").fetchall()

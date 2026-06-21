@@ -71,6 +71,21 @@ def _event_writer(repo: Repository, video_id: str, job_id: int):
     return write
 
 
+def _progress_writer(repo: Repository, job_id: int):
+    def write(progress: dict[str, Any]) -> None:
+        repo.update_job_progress(
+            job_id,
+            stage=str(progress.get("stage") or ""),
+            percent=float(progress.get("percent") or 0),
+            downloaded_bytes=int(progress.get("downloaded_bytes") or 0),
+            total_bytes=int(progress.get("total_bytes") or 0),
+            speed_bytes=float(progress.get("speed_bytes") or 0),
+            eta_seconds=float(progress.get("eta_seconds") or 0),
+        )
+
+    return write
+
+
 def download_video_from_db(
     video_id: str,
     config: Config,
@@ -121,6 +136,7 @@ def download_video_from_db(
                 str(video["source_url"]),
                 config,
                 event_callback=_event_writer(repo, video_id, job_id),
+                progress_callback=_progress_writer(repo, job_id),
             )
             downloaded_id = str(result["video_id"])
             if downloaded_id != video_id:

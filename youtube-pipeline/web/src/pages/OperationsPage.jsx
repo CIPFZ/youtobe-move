@@ -11,10 +11,16 @@ export function OperationsPage({ state, actions }) {
 
   return (
     <div className="operations-page">
-      <WorkerSection state={state} actions={actions} />
-      <FailuresSection state={state} actions={actions} />
-      <JobsSection state={state} actions={actions} />
-      <EventsSection state={state} actions={actions} />
+      <div className="operations-overview">
+        <WorkerSection state={state} actions={actions} />
+      </div>
+      <div className="operations-grid">
+        <FailuresSection state={state} actions={actions} />
+        <JobsSection state={state} actions={actions} />
+      </div>
+      <div className="operations-log">
+        <EventsSection state={state} actions={actions} />
+      </div>
     </div>
   );
 }

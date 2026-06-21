@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,7 +8,7 @@ from unittest.mock import patch
 from app.core.db import connect
 from app.core.repository import Repository
 from app.core.schema import init_schema
-from app.worker.runner import run_worker_loop, run_worker_once
+from app.worker.runner import run_embedded_scheduler_loop, run_worker_loop, run_worker_once
 
 
 class WorkerRunnerTests(unittest.TestCase):
@@ -25,6 +26,8 @@ class WorkerRunnerTests(unittest.TestCase):
             worker_enable_publish=False,
             worker_publish_dry_run=True,
             worker_interval_seconds=1,
+            worker_queue_interval_seconds=1,
+            worker_publish_interval_seconds=1,
             worker_cron="",
             job_lease_seconds=1800,
             storage_cleanup_enabled=False,
@@ -206,6 +209,37 @@ class WorkerRunnerTests(unittest.TestCase):
         self.assertEqual(result["schedule_mode"], "cron")
         seconds_until_next_cron.assert_called_once()
         sleep.assert_called_once_with(0.01)
+
+    def test_run_worker_loop_can_stop_during_interval_sleep(self):
+        stop_event = threading.Event()
+        stop_event.set()
+        with (
+            patch("app.worker.runner.run_worker_once", return_value={"status": "ok"}) as run_once,
+            patch("app.worker.runner.time.sleep") as sleep,
+        ):
+            result = run_worker_loop(self.config, interval_seconds=21600, config_loader=None, stop_event=stop_event)
+
+        self.assertEqual(result["schedule_mode"], "interval")
+        run_once.assert_called_once()
+        sleep.assert_not_called()
+
+    def test_embedded_scheduler_runs_independent_steps(self):
+        self.config.worker_enable_publish = True
+        stop_event = threading.Event()
+        stop_event.set()
+        with (
+            patch("app.worker.runner.discover_videos", return_value={"inserted_count": 0, "accepted_count": 0}) as discover,
+            patch("app.worker.runner.download_next", return_value={"status": "empty"}) as download,
+            patch("app.worker.runner.describe_next", return_value={"status": "empty"}) as describe,
+            patch("app.worker.runner.publish_next", return_value={"status": "empty"}) as publish,
+        ):
+            result = run_embedded_scheduler_loop(self.config, stop_event=stop_event, config_loader=None, max_ticks=1)
+
+        self.assertEqual(result["ticks"], 1)
+        discover.assert_called_once()
+        download.assert_called_once()
+        describe.assert_called_once()
+        publish.assert_called_once()
 
 
 if __name__ == "__main__":

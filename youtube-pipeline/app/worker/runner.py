@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import socket
+import threading
 import time
 from datetime import datetime
 from typing import Any, Callable
@@ -172,6 +173,7 @@ def run_worker_loop(
     publish_dry_run: bool | None = None,
     max_runs: int | None = None,
     config_loader: Callable[[], Config] | None = load_config,
+    stop_event: threading.Event | None = None,
 ) -> dict[str, Any]:
     runs: list[dict[str, Any]] = []
     run_count = 0
@@ -207,5 +209,140 @@ def run_worker_loop(
             schedule_mode,
             sleep_seconds,
         )
-        time.sleep(sleep_seconds)
+        if stop_event is not None:
+            if stop_event.wait(sleep_seconds):
+                break
+        else:
+            time.sleep(sleep_seconds)
     return {"status": "stopped", "runs": runs, "schedule_mode": schedule_mode}
+
+
+def _run_scheduled_step(
+    config: Config,
+    worker_id: str,
+    step_name: str,
+    step: WorkerStep,
+    enabled: bool = True,
+    disabled_reason: str = "disabled",
+) -> dict[str, Any]:
+    if not getattr(config, "pipeline_enabled", True):
+        result = {"status": "skipped", "reason": "pipeline_disabled"}
+    elif not enabled:
+        result = {"status": "skipped", "reason": disabled_reason}
+    else:
+        result = _run_step(step_name, step)
+    _create_worker_event(
+        config,
+        "worker_step_finished",
+        f"Worker scheduled step finished: {step_name}",
+        {"worker_id": worker_id, "step": step_name, "result": result},
+    )
+    return result
+
+
+def run_embedded_scheduler_loop(
+    config: Config,
+    stop_event: threading.Event | None = None,
+    config_loader: Callable[[], Config] | None = load_config,
+    max_ticks: int | None = None,
+) -> dict[str, Any]:
+    worker_id = socket.gethostname()
+    tick = 0
+    last_discovery_at = 0.0
+    last_queue_at = 0.0
+    last_publish_at = 0.0
+    current_config = config
+    _create_worker_event(config, "worker_scheduler_started", "Embedded worker scheduler started", {"worker_id": worker_id})
+
+    while max_ticks is None or tick < max_ticks:
+        now = time.monotonic()
+        if config_loader is not None:
+            try:
+                current_config = config_loader()
+            except Exception:
+                logger.exception("Worker scheduler config reload failed; using previous config")
+
+        discovery_interval = max(1, int(getattr(current_config, "worker_interval_seconds", 21600)))
+        queue_interval = max(1, int(getattr(current_config, "worker_queue_interval_seconds", 60)))
+        publish_interval = max(1, int(getattr(current_config, "worker_publish_interval_seconds", 300)))
+        ran_any = False
+
+        steps: list[dict[str, Any]] = []
+        if last_discovery_at == 0 or now - last_discovery_at >= discovery_interval:
+            steps.append(_run_step("recover", lambda: _recover_stale_jobs(current_config, worker_id)))
+            steps.append(
+                _run_scheduled_step(
+                    current_config,
+                    worker_id,
+                    "discovery",
+                    lambda: _maybe_discover(current_config),
+                    enabled=current_config.worker_enable_discovery,
+                    disabled_reason="worker_discovery_disabled",
+                )
+            )
+            last_discovery_at = time.monotonic()
+            ran_any = True
+
+        if last_queue_at == 0 or now - last_queue_at >= queue_interval:
+            steps.append(_run_step("recover", lambda: _recover_stale_jobs(current_config, worker_id)))
+            steps.append(
+                _run_scheduled_step(
+                    current_config,
+                    worker_id,
+                    "download",
+                    lambda: download_next(current_config, worker_id=worker_id),
+                    enabled=getattr(current_config, "worker_enable_download", True),
+                    disabled_reason="worker_download_disabled",
+                )
+            )
+            steps.append(
+                _run_scheduled_step(
+                    current_config,
+                    worker_id,
+                    "describe",
+                    lambda: describe_next(current_config, worker_id=worker_id),
+                    enabled=getattr(current_config, "worker_enable_describe", True),
+                    disabled_reason="worker_describe_disabled",
+                )
+            )
+            last_queue_at = time.monotonic()
+            ran_any = True
+
+        if last_publish_at == 0 or now - last_publish_at >= publish_interval:
+            publish_enabled = current_config.worker_enable_publish
+            dry_run_publish = current_config.worker_publish_dry_run
+            steps.append(
+                _run_scheduled_step(
+                    current_config,
+                    worker_id,
+                    "publish",
+                    lambda: publish_next(current_config, dry_run=dry_run_publish, worker_id=worker_id),
+                    enabled=publish_enabled,
+                    disabled_reason="worker_publish_disabled",
+                )
+            )
+            last_publish_at = time.monotonic()
+            ran_any = True
+
+        if ran_any:
+            _create_worker_event(
+                current_config,
+                "worker_scheduler_tick_finished",
+                "Embedded worker scheduler tick finished",
+                {"worker_id": worker_id, "steps": steps},
+            )
+            tick += 1
+
+        next_due = min(
+            max(1.0, discovery_interval - (time.monotonic() - last_discovery_at)),
+            max(1.0, queue_interval - (time.monotonic() - last_queue_at)),
+            max(1.0, publish_interval - (time.monotonic() - last_publish_at)),
+        )
+        logger.info("Embedded worker scheduler sleeping: seconds=%.1f", next_due)
+        if stop_event is not None:
+            if stop_event.wait(next_due):
+                break
+        else:
+            time.sleep(next_due)
+
+    return {"status": "stopped", "ticks": tick}

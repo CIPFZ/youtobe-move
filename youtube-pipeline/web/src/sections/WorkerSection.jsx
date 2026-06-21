@@ -1,4 +1,4 @@
-import { Card, Col, Descriptions, List, Row, Space, Statistic, Tag } from "antd";
+import { Card, Col, Descriptions, List, Progress, Row, Space, Statistic, Tag } from "antd";
 import { Play, RefreshCw } from "lucide-react";
 import { IconButton } from "../components/IconButton";
 
@@ -17,6 +17,8 @@ export function WorkerSection({ state, actions }) {
     ["发布", settings.worker_enable_publish],
     ["发布 dry-run", settings.worker_publish_dry_run],
   ];
+  const enabledCount = switches.filter(([, value]) => Boolean(value)).length;
+  const enabledPercent = Math.round((enabledCount / switches.length) * 100);
 
   return (
     <section className="panel" id="worker">
@@ -29,17 +31,22 @@ export function WorkerSection({ state, actions }) {
       </div>
       <div className="panel-body">
         <Row gutter={[12, 12]}>
-          <Col xs={24} lg={8}>
-            <Card size="small" title="运行开关">
-              <Space wrap>
-                {switches.map(([label, value]) => (
-                  <Tag color={value ? "success" : "error"} key={label}>{label}: {value ? "on" : "off"}</Tag>
-                ))}
-              </Space>
+          <Col xs={24} md={8} xl={6}>
+            <Card size="small" className="monitor-card" title="流水线状态">
+              <Statistic title="启用模块" value={enabledCount} suffix={`/ ${switches.length}`} />
+              <Progress percent={enabledPercent} size="small" status={settings.pipeline_enabled ? "active" : "exception"} />
             </Card>
           </Col>
-          <Col xs={24} lg={8}>
-            <Card size="small" title="调度参数">
+          <Col xs={24} md={8} xl={6}>
+            <Card size="small" className="monitor-card" title="任务锁">
+              <Row gutter={12}>
+                <Col span={12}><Statistic title="running" value={locks.running || 0} /></Col>
+                <Col span={12}><Statistic title="locked" value={locks.locked || 0} /></Col>
+              </Row>
+            </Card>
+          </Col>
+          <Col xs={24} md={8} xl={6}>
+            <Card size="small" className="monitor-card" title="调度参数">
               <Descriptions column={1} size="small">
                 <Descriptions.Item label="interval">{settings.worker_interval_seconds ?? "-"} 秒</Descriptions.Item>
                 <Descriptions.Item label="cron">{settings.worker_cron || "未启用"}</Descriptions.Item>
@@ -49,16 +56,17 @@ export function WorkerSection({ state, actions }) {
               </Descriptions>
             </Card>
           </Col>
-          <Col xs={24} lg={8}>
-            <Card size="small" title="任务锁">
-              <Row gutter={12}>
-                <Col span={12}><Statistic title="running" value={locks.running || 0} /></Col>
-                <Col span={12}><Statistic title="locked" value={locks.locked || 0} /></Col>
-              </Row>
+          <Col xs={24} xl={6}>
+            <Card size="small" className="monitor-card" title="运行开关">
+              <Space wrap>
+                {switches.map(([label, value]) => (
+                  <Tag color={value ? "success" : "error"} key={label}>{label}: {value ? "on" : "off"}</Tag>
+                ))}
+              </Space>
             </Card>
           </Col>
-          <Col xs={24} lg={12}>
-            <Card size="small" title="Job 分布">
+          <Col xs={24} lg={14}>
+            <Card size="small" className="monitor-card" title="Job 分布">
               {jobRows.length ? (
                 <Space wrap>
                   {jobRows.map((row) => (
@@ -68,8 +76,8 @@ export function WorkerSection({ state, actions }) {
               ) : <span className="muted">暂无 job。</span>}
             </Card>
           </Col>
-          <Col xs={24} lg={12}>
-            <Card size="small" title="最近 Worker 事件">
+          <Col xs={24} lg={10}>
+            <Card size="small" className="monitor-card" title="最近 Worker 事件">
               <List
                 size="small"
                 dataSource={workerEvents.slice(0, 6)}

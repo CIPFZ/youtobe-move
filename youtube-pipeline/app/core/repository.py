@@ -842,6 +842,40 @@ class Repository:
             "locked": int(row["locked"] or 0),
         }
 
+    def update_job_progress(
+        self,
+        job_id: int,
+        stage: str,
+        percent: float = 0,
+        downloaded_bytes: int = 0,
+        total_bytes: int = 0,
+        speed_bytes: float = 0,
+        eta_seconds: float = 0,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE jobs
+            SET progress_stage=?,
+                progress_percent=?,
+                progress_downloaded_bytes=?,
+                progress_total_bytes=?,
+                progress_speed_bytes=?,
+                progress_eta_seconds=?,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+            """,
+            (
+                stage,
+                max(0.0, min(100.0, float(percent or 0))),
+                max(0, int(downloaded_bytes or 0)),
+                max(0, int(total_bytes or 0)),
+                max(0.0, float(speed_bytes or 0)),
+                max(0.0, float(eta_seconds or 0)),
+                job_id,
+            ),
+        )
+        self.conn.commit()
+
     def get_pending_job(
         self,
         job_type: str,
@@ -967,7 +1001,10 @@ class Repository:
                 """
                 UPDATE jobs
                 SET status=?, attempts=attempts + 1, started_at=COALESCE(started_at, CURRENT_TIMESTAMP),
-                    error=?, error_type=?, next_run_at=NULL, updated_at=CURRENT_TIMESTAMP
+                    error=?, error_type=?, next_run_at=NULL,
+                    progress_stage='', progress_percent=0, progress_downloaded_bytes=0,
+                    progress_total_bytes=0, progress_speed_bytes=0, progress_eta_seconds=0,
+                    updated_at=CURRENT_TIMESTAMP
                 WHERE id=?
                 """,
                 (status, error, error_type, job_id),

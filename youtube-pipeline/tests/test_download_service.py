@@ -36,7 +36,7 @@ class DownloadServiceTests(unittest.TestCase):
         meta_path = self.base_dir / "downloads" / video_id / "meta.json"
         merged_path = self.base_dir / "downloads" / video_id / f"{video_id}_merge.mp4"
 
-        def fake_download(url, config, event_callback=None):
+        def fake_download(url, config, event_callback=None, progress_callback=None):
             meta_path.parent.mkdir(parents=True, exist_ok=True)
             meta_path.write_text("{}", encoding="utf-8")
             merged_path.write_bytes(b"merged")
@@ -69,6 +69,46 @@ class DownloadServiceTests(unittest.TestCase):
         self.assertEqual(video["title"], "Test title")
         self.assertEqual(files["merged_path"], str(merged_path))
         self.assertEqual(job["status"], "succeeded")
+
+    def test_download_video_from_db_records_progress(self):
+        video_id = self._add_video()
+        out_dir = self.base_dir / "downloads" / video_id
+        merged_path = out_dir / f"{video_id}_merge.mp4"
+
+        def fake_download(url, config, event_callback=None, progress_callback=None):
+            out_dir.mkdir(parents=True, exist_ok=True)
+            merged_path.write_bytes(b"merged")
+            if progress_callback:
+                progress_callback({
+                    "stage": "video",
+                    "percent": 42.5,
+                    "downloaded_bytes": 425,
+                    "total_bytes": 1000,
+                    "speed_bytes": 100,
+                    "eta_seconds": 6,
+                })
+            return {
+                "video_id": video_id,
+                "title": "",
+                "channel": "",
+                "duration": None,
+                "view_count": None,
+                "category": "",
+                "output_dir": str(out_dir),
+                "meta": str(out_dir / "meta.json"),
+                "video": str(out_dir / "video.mp4"),
+                "audio": str(out_dir / "audio.m4a"),
+                "poster": "",
+                "merged": str(merged_path),
+            }
+
+        with patch("app.download_service.download_video_assets", side_effect=fake_download):
+            download_video_from_db(video_id, self.config)
+
+        job = self.repo.get_latest_job(video_id, "download")
+        self.assertEqual(job["progress_stage"], "video")
+        self.assertEqual(job["progress_percent"], 42.5)
+        self.assertEqual(job["progress_downloaded_bytes"], 425)
 
     def test_download_video_from_db_skips_existing_download(self):
         video_id = self._add_video()
@@ -123,7 +163,7 @@ class DownloadServiceTests(unittest.TestCase):
         second_id = self._add_video("second12345")
         self.repo.create_job("download", video_id=second_id)
 
-        def fake_download(url, config, event_callback=None):
+        def fake_download(url, config, event_callback=None, progress_callback=None):
             out_dir = self.base_dir / "downloads" / second_id
             out_dir.mkdir(parents=True, exist_ok=True)
             merged = out_dir / f"{second_id}_merge.mp4"

@@ -47,6 +47,8 @@ class Config:
         self.minimax_request_timeout = int(os.environ["MINIMAX_REQUEST_TIMEOUT"])
         self.minimax_max_tokens = int(os.environ["MINIMAX_MAX_TOKENS"])
         self.worker_interval_seconds = int(os.environ["WORKER_INTERVAL_SECONDS"])
+        self.worker_queue_interval_seconds = int(os.environ["WORKER_QUEUE_INTERVAL_SECONDS"])
+        self.worker_publish_interval_seconds = int(os.environ["WORKER_PUBLISH_INTERVAL_SECONDS"])
         self.worker_cron = os.environ["WORKER_CRON"]
         self.worker_enable_discovery = os.environ["WORKER_ENABLE_DISCOVERY"].strip().lower() in {"1", "true", "yes", "on"}
         self.worker_enable_download = os.environ["WORKER_ENABLE_DOWNLOAD"].strip().lower() in {"1", "true", "yes", "on"}

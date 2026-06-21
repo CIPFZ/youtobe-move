@@ -31,6 +31,8 @@ class ConfigField:
 CONFIG_FIELDS: tuple[ConfigField, ...] = (
     ConfigField("PIPELINE_ENABLED", "pipeline", "bool"),
     ConfigField("WORKER_INTERVAL_SECONDS", "pipeline", "int", minimum=1, maximum=86400),
+    ConfigField("WORKER_QUEUE_INTERVAL_SECONDS", "pipeline", "int", minimum=1, maximum=86400),
+    ConfigField("WORKER_PUBLISH_INTERVAL_SECONDS", "pipeline", "int", minimum=1, maximum=86400),
     ConfigField("WORKER_CRON", "pipeline", "string"),
     ConfigField("WORKER_ENABLE_DISCOVERY", "pipeline", "bool"),
     ConfigField("WORKER_ENABLE_DOWNLOAD", "pipeline", "bool"),

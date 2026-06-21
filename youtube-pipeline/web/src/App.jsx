@@ -1,5 +1,5 @@
-import React, { Suspense, lazy, useEffect } from "react";
-import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import React, { Suspense, lazy } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { message, Modal, Spin } from "antd";
 import { AppLayout } from "./layout/AppLayout";
 import { usePipelineDashboard } from "./hooks/usePipelineDashboard";
@@ -8,6 +8,7 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage").then((module) =
 const DiscoveryPage = lazy(() => import("./pages/DiscoveryPage").then((module) => ({ default: module.DiscoveryPage })));
 const OperationsPage = lazy(() => import("./pages/OperationsPage").then((module) => ({ default: module.OperationsPage })));
 const SettingsPage = lazy(() => import("./pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
+const VideoDetailPage = lazy(() => import("./pages/VideoDetailPage").then((module) => ({ default: module.VideoDetailPage })));
 const VideosPage = lazy(() => import("./pages/VideosPage").then((module) => ({ default: module.VideosPage })));
 
 function App() {
@@ -64,7 +65,7 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<PageFallback><DashboardPage state={state} actions={routeActions} /></PageFallback>} />
           <Route path="/videos" element={<PageFallback><VideosPage state={state} actions={routeActions} showToast={showToast} /></PageFallback>} />
-          <Route path="/videos/:videoId" element={<PageFallback><VideoDetailRoute state={state} actions={routeActions} rawActions={actions} showToast={showToast} /></PageFallback>} />
+          <Route path="/videos/:videoId" element={<PageFallback><VideoDetailPage state={state} actions={routeActions} rawActions={actions} showToast={showToast} /></PageFallback>} />
           <Route path="/discovery" element={<PageFallback><DiscoveryPage state={state} actions={routeActions} /></PageFallback>} />
           <Route path="/operations" element={<PageFallback><OperationsPage state={state} actions={routeActions} /></PageFallback>} />
           <Route path="/settings" element={<PageFallback><SettingsPage state={state} actions={routeActions} /></PageFallback>} />
@@ -77,18 +78,6 @@ function App() {
 
 function PageFallback({ children }) {
   return <Suspense fallback={<div className="page-loading"><Spin /> 加载页面...</div>}>{children}</Suspense>;
-}
-
-function VideoDetailRoute({ state, actions, rawActions, showToast }) {
-  const { videoId } = useParams();
-
-  useEffect(() => {
-    if (videoId && state.selectedId !== videoId) {
-      rawActions.selectVideo(videoId).catch((error) => showToast(error.message));
-    }
-  }, [videoId]);
-
-  return <VideosPage state={state} actions={actions} showToast={showToast} />;
 }
 
 export default App;

@@ -8,7 +8,7 @@ export function SettingsPage({ state, actions }) {
   }, []);
 
   return (
-    <div className="page-stack">
+    <div className="settings-page">
       <ConfigSection state={state} actions={actions} />
       <StorageSection state={state} actions={actions} />
     </div>

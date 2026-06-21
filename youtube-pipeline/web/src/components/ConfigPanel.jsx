@@ -31,7 +31,9 @@ const groupDescriptions = {
 
 const fieldDescriptions = {
   PIPELINE_ENABLED: "总开关。关闭后 worker 会跳过发现、下载、文案、发布和清理。",
-  WORKER_INTERVAL_SECONDS: "interval 模式下每轮 worker 的间隔秒数。",
+  WORKER_INTERVAL_SECONDS: "发现任务调度间隔秒数。",
+  WORKER_QUEUE_INTERVAL_SECONDS: "下载和文案队列推进间隔秒数。",
+  WORKER_PUBLISH_INTERVAL_SECONDS: "发布队列检查间隔秒数。",
   WORKER_CRON: "5 段 cron。填写后 worker 按 cron 调度，--interval 会覆盖它。",
   WORKER_ENABLE_DISCOVERY: "是否允许 worker 自动发现新视频。",
   WORKER_ENABLE_DOWNLOAD: "是否允许 worker 自动执行下载任务。",
@@ -61,6 +63,8 @@ const summaryKeys = [
   "PUBLISH_MODE",
   "WORKER_CRON",
   "WORKER_INTERVAL_SECONDS",
+  "WORKER_QUEUE_INTERVAL_SECONDS",
+  "WORKER_PUBLISH_INTERVAL_SECONDS",
   "WORKER_ENABLE_PUBLISH",
   "WORKER_PUBLISH_DRY_RUN",
   "STORAGE_CLEANUP_ENABLED",
@@ -77,34 +81,40 @@ export function ConfigPanel({ config, configByKey }) {
     .map((group) => [group, config.groups[group]]);
   return (
     <div className="panel-body">
-      <ConfigSummary configByKey={configByKey} />
-      <div className="config-nav" aria-label="配置分组导航">
-        {groups.map(([group, fields]) => (
-          <a href={`#config-${group}`} key={group}>
-            <b>{groupLabels[group] || group}</b>
-            <span>{fields.length}</span>
-          </a>
-        ))}
+      <div className="settings-config-layout">
+        <aside className="config-sidebar">
+          <ConfigSummary configByKey={configByKey} />
+          <div className="config-nav" aria-label="配置分组导航">
+            {groups.map(([group, fields]) => (
+              <a href={`#config-${group}`} key={group}>
+                <b>{groupLabels[group] || group}</b>
+                <span>{fields.length}</span>
+              </a>
+            ))}
+          </div>
+        </aside>
+        <div>
+          <div className="config-groups">
+            {groups.map(([group, fields]) => (
+              <section className="config-group" id={`config-${group}`} key={group}>
+                <div className="config-group-head">
+                  <div>
+                    <h3>{groupLabels[group] || group}</h3>
+                    <p>{groupDescriptions[group] || group}</p>
+                  </div>
+                  <span>{group} · {fields.length}</span>
+                </div>
+                <div className="config-grid">
+                  {fields.map((field) => (
+                    <ConfigField field={configByKey[field.key] || field} key={field.key} />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+          <div className="muted config-path">配置文件：{config.env_path || "-"}</div>
+        </div>
       </div>
-      <div className="config-groups">
-        {groups.map(([group, fields]) => (
-          <section className="config-group" id={`config-${group}`} key={group}>
-            <div className="config-group-head">
-              <div>
-                <h3>{groupLabels[group] || group}</h3>
-                <p>{groupDescriptions[group] || group}</p>
-              </div>
-              <span>{group} · {fields.length}</span>
-            </div>
-            <div className="config-grid">
-              {fields.map((field) => (
-                <ConfigField field={configByKey[field.key] || field} key={field.key} />
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
-      <div className="muted config-path">配置文件：{config.env_path || "-"}</div>
     </div>
   );
 }

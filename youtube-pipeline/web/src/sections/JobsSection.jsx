@@ -1,4 +1,4 @@
-import { Button, Select, Space, Table, Tag, Typography } from "antd";
+import { Button, Progress, Select, Space, Table, Tag, Typography } from "antd";
 import { RefreshCw } from "lucide-react";
 import { errorOptions } from "../constants";
 import { IconButton } from "../components/IconButton";
@@ -55,6 +55,11 @@ export function JobsSection({ state, actions }) {
       render: (_, job) => `${job.attempts || 0}/${job.max_attempts || 0}`,
     },
     {
+      title: "进度",
+      width: 180,
+      render: (_, job) => <JobProgress job={job} />,
+    },
+    {
       title: "错误 / 计划",
       render: (_, job) => <Typography.Text ellipsis={{ tooltip: job.error || job.next_run_at || job.locked_at || "-" }}>{job.error || job.next_run_at || job.locked_at || "-"}</Typography.Text>,
     },
@@ -93,6 +98,28 @@ export function JobsSection({ state, actions }) {
       />
     </section>
   );
+}
+
+function JobProgress({ job }) {
+  const percent = Number(job.progress_percent || 0);
+  if (job.job_type !== "download" || (!percent && job.status !== "running")) {
+    return <Typography.Text type="secondary">-</Typography.Text>;
+  }
+  const stage = job.progress_stage || "download";
+  return (
+    <Space direction="vertical" size={2} style={{ width: "100%" }}>
+      <Progress percent={Math.round(percent)} size="small" status={job.status === "failed" ? "exception" : "active"} />
+      <Typography.Text type="secondary">{stage} · {formatBytes(job.progress_downloaded_bytes)} / {formatBytes(job.progress_total_bytes)}</Typography.Text>
+    </Space>
+  );
+}
+
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (!bytes) return "-";
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KiB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GiB`;
 }
 
 function TablePager({ offset, limit, count, hasMore, onPrev, onNext }) {

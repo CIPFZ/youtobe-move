@@ -9,6 +9,7 @@ from app.core.repository import Repository
 from app.core.schema import init_schema
 from app.publish_service import update_publish_draft
 from app.web import (
+    PipelineRequestHandler,
     WebError,
     _handle_action,
     _handle_batch_action,
@@ -18,6 +19,7 @@ from app.web import (
     _list_videos,
     _status_settings,
     _video_detail,
+    run_web_server,
 )
 
 
@@ -212,6 +214,8 @@ class WebTests(unittest.TestCase):
         self.config.pipeline_enabled = True
         self.config.publish_mode = "approved_auto"
         self.config.worker_interval_seconds = 60
+        self.config.worker_queue_interval_seconds = 30
+        self.config.worker_publish_interval_seconds = 300
         self.config.worker_cron = ""
         self.config.worker_enable_discovery = True
         self.config.worker_enable_download = True
@@ -231,9 +235,61 @@ class WebTests(unittest.TestCase):
         self.assertTrue(settings["pipeline_enabled"])
         self.assertFalse(settings["worker_enable_publish"])
         self.assertEqual(settings["worker_interval_seconds"], 60)
+        self.assertEqual(settings["worker_queue_interval_seconds"], 30)
+        self.assertEqual(settings["worker_publish_interval_seconds"], 300)
         self.assertEqual(settings["worker_discovery_min_queue_size"], 3)
         self.assertEqual(settings["publish_draft_rules"]["title_max_length"], 80)
         self.assertEqual(settings["publish_draft_rules"]["tag_max_count"], 8)
+
+    def test_run_web_server_starts_embedded_worker(self):
+        self.config.web_host = "127.0.0.1"
+        self.config.web_port = 0
+
+        class FakeServer:
+            def __init__(self, address, handler_class, config):
+                self.address = address
+                self.handler_class = handler_class
+                self.config = config
+                self.closed = False
+
+            def serve_forever(self):
+                return None
+
+            def server_close(self):
+                self.closed = True
+
+        class FakeThread:
+            instances = []
+
+            def __init__(self, target, args, name, daemon):
+                self.target = target
+                self.args = args
+                self.name = name
+                self.daemon = daemon
+                self.started = False
+                self.join_timeout = None
+                FakeThread.instances.append(self)
+
+            def start(self):
+                self.started = True
+
+            def join(self, timeout=None):
+                self.join_timeout = timeout
+
+        with (
+            patch("app.web.PipelineHTTPServer", FakeServer),
+            patch("app.web.threading.Thread", FakeThread),
+        ):
+            run_web_server(self.config)
+
+        self.assertEqual(len(FakeThread.instances), 1)
+        thread = FakeThread.instances[0]
+        self.assertTrue(thread.started)
+        self.assertEqual(thread.name, "youtube-pipeline-worker")
+        self.assertTrue(thread.daemon)
+        self.assertEqual(thread.join_timeout, 5)
+        self.assertEqual(thread.args[0], self.config)
+        self.assertTrue(thread.args[1].is_set())
 
     def test_update_publish_draft_marks_manual_and_resets_review(self):
         self.repo.upsert_video(

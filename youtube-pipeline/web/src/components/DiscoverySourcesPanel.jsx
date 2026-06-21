@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Input, InputNumber, Select, Space } from "antd";
+import { Button, Card, Descriptions, Form, Input, InputNumber, Select, Space, Table, Tabs, Tag } from "antd";
 import { Save, Search } from "lucide-react";
 import { fmtCount, fmtDuration } from "../format";
 import { IconButton } from "./IconButton";
@@ -67,28 +67,19 @@ function formToSource(form) {
   return source;
 }
 
-function Field({ label, children }) {
-  return (
-    <label>
-      <span>{label}</span>
-      {children}
-    </label>
-  );
-}
-
 function TextField({ label, value, onChange }) {
   return (
-    <Field label={label}>
-      <Input value={value} onChange={(event) => onChange(event.target.value)} />
-    </Field>
+    <Form.Item label={label}>
+      <Input value={value} onChange={(event) => onChange(event.target.value)} allowClear />
+    </Form.Item>
   );
 }
 
 function NumberTextField({ label, value, onChange }) {
   return (
-    <Field label={label}>
-      <InputNumber value={value === "" ? null : Number(value)} min={0} onChange={(next) => onChange(next === null ? "" : String(next))} />
-    </Field>
+    <Form.Item label={label}>
+      <InputNumber className="full-input" value={value === "" ? null : Number(value)} min={0} onChange={(next) => onChange(next === null ? "" : String(next))} />
+    </Form.Item>
   );
 }
 
@@ -115,91 +106,141 @@ export function DiscoverySourcesPanel({ sources, preview, onSave, onDelete, onPr
     resetForm();
   }
 
+  const columns = [
+    {
+      title: "发现源",
+      render: (_, source) => (
+        <Space direction="vertical" size={2}>
+          <Button type="link" className="table-title-link" onClick={() => editSource(source)}>{source.name || `${source.type}:${source.index}`}</Button>
+          <span className="muted">{source.keyword || source.region_code || source.handle || source.channel_id || "-"}</span>
+        </Space>
+      ),
+    },
+    { title: "类型", dataIndex: "type", width: 130, render: (value) => <Tag>{value}</Tag> },
+    { title: "状态", width: 92, render: (_, source) => <Tag color={source.enabled === false ? "error" : "success"}>{source.enabled === false ? "off" : "on"}</Tag> },
+    { title: "优先级", width: 92, render: (_, source) => <Tag>P{source.priority ?? 100}</Tag> },
+    { title: "权重", width: 86, render: (_, source) => source.score_weight ?? 1 },
+    { title: "数量", width: 86, dataIndex: "max_results" },
+  ];
+
   return (
     <div className="panel-body discovery-layout">
-      <div>
-        {(sources || []).length ? sources.map((source) => (
-          <Button type="text" className={`source-row${selectedIndex === source.index ? " active" : ""}`} key={source.index} onClick={() => editSource(source)}>
-            <div>
-              <b>{source.name || `${source.type}:${source.index}`}</b>
-              <div className="muted">
-                {source.type} · {source.enabled === false ? "disabled" : "enabled"} · priority {source.priority ?? 100} · weight {source.score_weight ?? 1} · max {source.max_results} · {source.keyword || source.region_code || source.handle || source.channel_id || "-"}
-              </div>
-            </div>
-            <span className={`badge${source.enabled === false ? " failed" : ""}`}>{source.index}</span>
-          </Button>
-        )) : <div className="muted">暂无发现源。</div>}
+      <Card
+        title="发现源列表"
+        className="discovery-source-card"
+        extra={<Tag>{sources?.length || 0} sources</Tag>}
+      >
+        <Table
+          className="ops-table"
+          columns={columns}
+          dataSource={sources || []}
+          rowKey="index"
+          pagination={false}
+          size="middle"
+          rowClassName={(source) => source.index === selectedIndex ? "active-row" : ""}
+          onRow={(source) => ({ onClick: () => editSource(source) })}
+          scroll={{ x: 760 }}
+        />
+      </Card>
+      <Card className="discovery-editor-card" title={selectedIndex === null ? "新增发现源" : `编辑发现源 #${selectedIndex}`}>
+        <Tabs
+          items={[
+            {
+              key: "form",
+              label: "配置",
+              children: (
+                <DiscoverySourceForm
+                  form={form}
+                  selectedIndex={selectedIndex}
+                  updateField={updateField}
+                  submit={submit}
+                  resetForm={resetForm}
+                  onDelete={onDelete}
+                  onPreview={onPreview}
+                />
+              ),
+            },
+            {
+              key: "preview",
+              label: "预览",
+              children: <DiscoveryPreview preview={preview} />,
+            },
+          ]}
+        />
+      </Card>
+    </div>
+  );
+}
+
+function DiscoverySourceForm({ form, selectedIndex, updateField, submit, resetForm, onDelete, onPreview }) {
+  return (
+    <Form layout="vertical" className="source-form">
+        <Descriptions bordered size="small" column={2} className="source-form-summary">
+        <Descriptions.Item label="类型">{form.type}</Descriptions.Item>
+        <Descriptions.Item label="状态">{form.enabled === "true" ? "enabled" : "disabled"}</Descriptions.Item>
+      </Descriptions>
+      <div className="draft-row">
+        <Form.Item label="类型">
+          <Select value={form.type} onChange={(value) => updateField("type", value)} options={["search", "trending", "channel_uploads"].map((item) => ({ value: item, label: item }))} />
+        </Form.Item>
+        <Form.Item label="数量">
+          <InputNumber className="full-input" value={Number(form.max_results || 2)} min={1} max={50} onChange={(value) => updateField("max_results", String(value ?? 2))} />
+        </Form.Item>
       </div>
-      <div className="source-form">
-        <div className="draft-row">
-          <label>
-            <span>类型</span>
-            <Select value={form.type} onChange={(value) => updateField("type", value)} options={["search", "trending", "channel_uploads"].map((item) => ({ value: item, label: item }))} />
-          </label>
-          <label>
-            <span>数量</span>
-            <InputNumber value={Number(form.max_results || 2)} min={1} max={50} onChange={(value) => updateField("max_results", String(value ?? 2))} />
-          </label>
-        </div>
-        <div className="draft-row">
-          <label>
-            <span>启用</span>
-            <Select value={form.enabled} onChange={(value) => updateField("enabled", value)} options={[{ value: "true", label: "true" }, { value: "false", label: "false" }]} />
-          </label>
-          <label>
-            <span>优先级</span>
-            <InputNumber value={Number(form.priority || 100)} min={0} max={10000} onChange={(value) => updateField("priority", String(value ?? 100))} />
-          </label>
-        </div>
-        <Field label="分数权重"><InputNumber value={Number(form.score_weight || 1)} min={0} step={0.1} onChange={(value) => updateField("score_weight", String(value ?? 1))} /></Field>
-        <TextField label="名称" value={form.name} onChange={(value) => updateField("name", value)} />
-        <div className="filter-box">
-          <h2>过滤覆盖</h2>
+      <div className="draft-row">
+        <Form.Item label="启用">
+          <Select value={form.enabled} onChange={(value) => updateField("enabled", value)} options={[{ value: "true", label: "true" }, { value: "false", label: "false" }]} />
+        </Form.Item>
+        <Form.Item label="优先级">
+          <InputNumber className="full-input" value={Number(form.priority || 100)} min={0} max={10000} onChange={(value) => updateField("priority", String(value ?? 100))} />
+        </Form.Item>
+      </div>
+      <Form.Item label="分数权重"><InputNumber className="full-input" value={Number(form.score_weight || 1)} min={0} step={0.1} onChange={(value) => updateField("score_weight", String(value ?? 1))} /></Form.Item>
+      <TextField label="名称" value={form.name} onChange={(value) => updateField("name", value)} />
+      {form.type === "search" ? (
+        <>
+          <TextField label="关键词" value={form.keyword} onChange={(value) => updateField("keyword", value)} />
           <div className="draft-row">
-            <NumberTextField label="最小时长秒" value={form.min_duration_seconds} onChange={(value) => updateField("min_duration_seconds", value)} />
-            <NumberTextField label="最大时长秒" value={form.max_duration_seconds} onChange={(value) => updateField("max_duration_seconds", value)} />
-          </div>
-          <NumberTextField label="最低播放量" value={form.min_view_count} onChange={(value) => updateField("min_view_count", value)} />
-          <TextField label="标题黑名单" value={form.title_blocklist} onChange={(value) => updateField("title_blocklist", value)} />
-          <div className="draft-row">
-            <TextField label="分类白名单" value={form.category_allowlist} onChange={(value) => updateField("category_allowlist", value)} />
-            <TextField label="分类黑名单" value={form.category_blocklist} onChange={(value) => updateField("category_blocklist", value)} />
-          </div>
-        </div>
-        {form.type === "search" ? (
-          <>
-            <TextField label="关键词" value={form.keyword} onChange={(value) => updateField("keyword", value)} />
-            <div className="draft-row">
-              <TextField label="排序" value={form.order} onChange={(value) => updateField("order", value)} />
-              <TextField label="地区" value={form.region_code} onChange={(value) => updateField("region_code", value)} />
-            </div>
-            <div className="draft-row">
-              <TextField label="频道 ID" value={form.channel_id} onChange={(value) => updateField("channel_id", value)} />
-              <TextField label="分类 ID" value={form.video_category_id} onChange={(value) => updateField("video_category_id", value)} />
-            </div>
-          </>
-        ) : null}
-        {form.type === "trending" ? (
-          <div className="draft-row">
+            <TextField label="排序" value={form.order} onChange={(value) => updateField("order", value)} />
             <TextField label="地区" value={form.region_code} onChange={(value) => updateField("region_code", value)} />
-            <TextField label="分类 ID" value={form.video_category_id} onChange={(value) => updateField("video_category_id", value)} />
           </div>
-        ) : null}
-        {form.type === "channel_uploads" ? (
           <div className="draft-row">
             <TextField label="频道 ID" value={form.channel_id} onChange={(value) => updateField("channel_id", value)} />
-            <TextField label="Handle" value={form.handle} onChange={(value) => updateField("handle", value)} />
+            <TextField label="分类 ID" value={form.video_category_id} onChange={(value) => updateField("video_category_id", value)} />
           </div>
-        ) : null}
-        <Space wrap>
-          <IconButton icon={Save} className="primary" onClick={submit}>{selectedIndex === null ? "新增" : "保存"}</IconButton>
-          <IconButton icon={Search} disabled={selectedIndex === null} onClick={() => onPreview(selectedIndex)}>预览</IconButton>
-          <Button onClick={resetForm}>清空</Button>
-          <Button danger disabled={selectedIndex === null} onClick={() => onDelete(selectedIndex)}>删除</Button>
-        </Space>
-        <DiscoveryPreview preview={preview} />
-      </div>
-    </div>
+        </>
+      ) : null}
+      {form.type === "trending" ? (
+        <div className="draft-row">
+          <TextField label="地区" value={form.region_code} onChange={(value) => updateField("region_code", value)} />
+          <TextField label="分类 ID" value={form.video_category_id} onChange={(value) => updateField("video_category_id", value)} />
+        </div>
+      ) : null}
+      {form.type === "channel_uploads" ? (
+        <div className="draft-row">
+          <TextField label="频道 ID" value={form.channel_id} onChange={(value) => updateField("channel_id", value)} />
+          <TextField label="Handle" value={form.handle} onChange={(value) => updateField("handle", value)} />
+        </div>
+      ) : null}
+      <Card size="small" title="过滤覆盖">
+        <div className="draft-row">
+          <NumberTextField label="最小时长秒" value={form.min_duration_seconds} onChange={(value) => updateField("min_duration_seconds", value)} />
+          <NumberTextField label="最大时长秒" value={form.max_duration_seconds} onChange={(value) => updateField("max_duration_seconds", value)} />
+        </div>
+        <NumberTextField label="最低播放量" value={form.min_view_count} onChange={(value) => updateField("min_view_count", value)} />
+        <TextField label="标题黑名单" value={form.title_blocklist} onChange={(value) => updateField("title_blocklist", value)} />
+        <div className="draft-row">
+          <TextField label="分类白名单" value={form.category_allowlist} onChange={(value) => updateField("category_allowlist", value)} />
+          <TextField label="分类黑名单" value={form.category_blocklist} onChange={(value) => updateField("category_blocklist", value)} />
+        </div>
+      </Card>
+      <Space wrap>
+        <IconButton icon={Save} className="primary" onClick={submit}>{selectedIndex === null ? "新增" : "保存"}</IconButton>
+        <IconButton icon={Search} disabled={selectedIndex === null} onClick={() => onPreview(selectedIndex)}>预览</IconButton>
+        <Button onClick={resetForm}>清空</Button>
+        <Button danger disabled={selectedIndex === null} onClick={() => onDelete(selectedIndex)}>删除</Button>
+      </Space>
+    </Form>
   );
 }
 
